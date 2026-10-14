@@ -1,43 +1,44 @@
-import React, { useState, useEffect } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/contexts/AuthContext'
 import {
-  CustomersService,
-  ProductsService,
-  StockService,
-  SettingsService,
-  SalesService,
-} from '@/services/api'
-import type { CustomerRecord, ProductRecord, ProductVariantRecord, StockItemRecord } from '@/types'
-import { formatBRL, normalizePhone, normalizeDocument } from '@/lib/formatters'
-import {
-  UserCheck,
+  ArrowLeft,
+  CheckCircle2,
+  DollarSign,
+  Plus,
+  Trash2,
   Search,
   UserPlus,
-  Package,
-  ShoppingCart,
-  Trash2,
-  AlertCircle,
+  AlertTriangle,
+  Receipt,
   CreditCard,
-  DollarSign,
+  Banknote,
   QrCode,
-  ShieldCheck,
-  CheckCircle2,
-  Loader2,
+  ShieldAlert,
 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import {
+  ProductsService,
+  CustomersService,
+  StockService,
+  SalesService,
+  StoresService,
+  SettingsService,
+  FinancialService,
+} from '@/services/api'
+import type {
+  ProductRecord,
+  ProductVariantRecord,
+  CustomerRecord,
+  StockItemRecord,
+  StoreRecord,
+  PaymentMethod,
+  FinancialAccountRecord,
+} from '@/types'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -45,164 +46,387 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useToast } from '@/hooks/use-toast'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { formatBRL } from '@/lib/formatters'
+import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
 
 interface CartItem {
-  productId: string
-  variantId?: string
-  name: string
-  sku: string
-  unitPrice: number
-  costPrice?: number
+  id: string
+  product: ProductRecord
+  variant?: ProductVariantRecord
   quantity: number
+  sale_price: number
+  cost_price: number
   discount: number
-  total: number
-  trackSerial: boolean
-  serialNumber?: string
-  availableStock: number
+  serial_number?: string
+  stockAvailable: number
+  commission_rate?: number
 }
 
-export default function NewSale() {
-  const { user, activeStoreId, authorizedStores, stores } = useAuth()
+interface PaymentEntry {
+  id: string
+  method: PaymentMethod
+  amount: number
+  received_amount?: number
+  change_amount?: number
+  installments: number
+  installment_value: number
+  financial_account?: string
+  card_tax_rate?: number
+  card_tax_amount?: number
+  net_amount?: number
+}
+
+export function NewSale() {
   const navigate = useNavigate()
-  const { toast } = useToast()
+  const { user, isProfile } = useAuth()
+  const isAdmin = isProfile('admin')
 
-  // Current store for this sale
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(
-    activeStoreId || authorizedStores[0]?.id || '',
-  )
+  // Data states
+  const [stores, setStores] = useState<StoreRecord[]>([])
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('')
+  const [products, setProducts] = useState<ProductRecord[]>([])
+  const [stockItems, setStockItems] = useState<StockItemRecord[]>([])
+  const [accounts, setAccounts] = useState<FinancialAccountRecord[]>([])
 
-  // Step 1: Customer search & selection
+  // Selection states
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState<CustomerRecord[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null)
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState(false)
+  const [notes, setNotes] = useState('')
+
+  // Payments array (mixed payment supported)
+  const [payments, setPayments] = useState<PaymentEntry[]>([])
+
+  // Modal new payment
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [newPayMethod, setNewPayMethod] = useState<PaymentMethod>('pix')
+  const [newPayAmount, setNewPayAmount] = useState<number>(0)
+  const [newPayCashGiven, setNewPayCashGiven] = useState<number>(0)
+  const [newPayInstallments, setNewPayInstallments] = useState<number>(1)
+  const [newPayAccount, setNewPayAccount] = useState<string>('')
+
+  // Settings for limits
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState<number>(10)
+  const [maxInstallmentsLimit, setMaxInstallmentsLimit] = useState<number>(12)
+
+  // Modals
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
-  const [isDuplicateAlertOpen, setIsDuplicateAlertOpen] = useState(false)
-  const [duplicateCustomerFound, setDuplicateCustomerFound] = useState<CustomerRecord | null>(null)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [newCustomerDoc, setNewCustomerDoc] = useState('')
+  const [newCustomerEmail, setNewCustomerEmail] = useState('')
 
-  // Quick Customer Form
-  const [newCustName, setNewCustName] = useState('')
-  const [newCustPhone, setNewCustPhone] = useState('')
-  const [newCustDoc, setNewCustDoc] = useState('')
-  const [newCustEmail, setNewCustEmail] = useState('')
-  const [newCustAddress, setNewCustAddress] = useState('')
-
-  // Step 2: Products & Cart
-  const [products, setProducts] = useState<ProductRecord[]>([])
-  const [productSearch, setProductSearch] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [stockMap, setStockMap] = useState<Record<string, number>>({})
-
-  // Commercial Rules from Settings
-  const [limits, setLimits] = useState({
-    maxPix: 10,
-    maxCash: 10,
-    maxCard: 5,
-    maxInstallments: 12,
-  })
-
-  // Step 3: Payment
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'dinheiro' | 'cartao_credito'>('pix')
-  const [installments, setInstallments] = useState(1)
-  const [saleObservation, setSaleObservation] = useState('')
+  // Authorization for pending balance
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [authReason, setAuthReason] = useState('')
 
   // Confirmation state
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [confirmedSaleData, setConfirmedSaleData] = useState<any | null>(null)
+  const [completedSale, setCompletedSale] = useState<{ id: string; number: string } | null>(null)
 
-  // Load products, stock, and settings
+  // Load Initial Data
   useEffect(() => {
-    const init = async () => {
+    async function init() {
       try {
-        const [prods, stockItems, setts] = await Promise.all([
-          ProductsService.getAll("status = 'ativo'"),
-          StockService.getStockItems(selectedStoreId),
-          SettingsService.getAll(),
+        const [storesList, prodsList] = await Promise.all([
+          StoresService.list(),
+          ProductsService.list("status = 'ativo'"),
         ])
-        setProducts(prods)
+        setStores(storesList)
+        setProducts(prodsList)
 
-        // Map stock quantities by product+variant
-        const sMap: Record<string, number> = {}
-        for (const it of stockItems) {
-          const key = it.variant ? `${it.product}_${it.variant}` : `${it.product}`
-          sMap[key] = (sMap[key] || 0) + it.quantity
+        if (storesList.length > 0) {
+          const userStore =
+            user?.stores && user.stores.length > 0 ? user.stores[0] : storesList[0].id
+          setSelectedStoreId(userStore)
         }
-        setStockMap(sMap)
 
-        setLimits({
-          maxPix: Number(setts.max_discount_pix || 10),
-          maxCash: Number(setts.max_discount_dinheiro || 10),
-          maxCard: Number(setts.max_discount_cartao_credito || 5),
-          maxInstallments: Number(setts.max_installments_cartao_credito || 12),
+        // Load settings
+        const maxDisc = await SettingsService.get('max_discount_seller', '10')
+        setMaxDiscountPercent(parseFloat(maxDisc) || 10)
+        const maxInst = await SettingsService.get('max_installments', '12')
+        setMaxInstallmentsLimit(parseInt(maxInst, 10) || 12)
+
+        if (isAdmin) {
+          const accs = await FinancialService.listAccounts()
+          setAccounts(accs.filter((a) => a.active))
+        }
+      } catch (err: any) {
+        toast({
+          title: 'Erro ao carregar dados da venda',
+          description: err.message,
+          variant: 'destructive',
         })
-      } catch (err) {
-        console.error('Error loading sale prerequisites:', err)
       }
     }
     init()
+  }, [user, isAdmin])
+
+  // Load stock when store changes
+  useEffect(() => {
+    if (!selectedStoreId) return
+    StockService.listByStore(selectedStoreId)
+      .then(setStockItems)
+      .catch((err) => console.error('Erro ao buscar estoque:', err))
   }, [selectedStoreId])
 
-  // Customer search debounced
+  // Customer Search
   useEffect(() => {
-    if (!customerSearch.trim()) {
+    if (customerSearch.trim().length < 2) {
       setCustomerResults([])
       return
     }
     const timer = setTimeout(async () => {
+      setIsSearchingCustomer(true)
       try {
-        const res = await CustomersService.getAll(customerSearch)
-        setCustomerResults(res)
-      } catch {
-        // ignore
+        const res = await CustomersService.list(customerSearch, 1, 5)
+        setCustomerResults(res.items)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setIsSearchingCustomer(false)
       }
-    }, 250)
+    }, 300)
     return () => clearTimeout(timer)
   }, [customerSearch])
 
-  // Handle Quick Customer Registration with Duplicate Warning
-  const handleQuickCustomer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newCustName.trim() || !newCustPhone.trim()) {
+  // Totals calculations
+  const subtotal = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.sale_price * item.quantity, 0)
+  }, [cart])
+
+  const totalDiscount = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.discount, 0)
+  }, [cart])
+
+  const total = useMemo(() => {
+    return Math.max(0, subtotal - totalDiscount)
+  }, [subtotal, totalDiscount])
+
+  const totalPaid = useMemo(() => {
+    return payments.reduce((sum, p) => sum + p.amount, 0)
+  }, [payments])
+
+  const remainingBalance = useMemo(() => {
+    return Math.max(0, Number((total - totalPaid).toFixed(2)))
+  }, [total, totalPaid])
+
+  const isExactPayment = useMemo(() => {
+    return Math.round(totalPaid * 100) === Math.round(total * 100) && total > 0
+  }, [totalPaid, total])
+
+  // Add product to cart
+  const handleAddToCart = (product: ProductRecord, variant?: ProductVariantRecord) => {
+    if (!selectedStoreId) {
+      toast({ title: 'Selecione a loja da venda primeiro', variant: 'destructive' })
+      return
+    }
+
+    const stock = stockItems.find(
+      (s) => s.product === product.id && (variant ? s.variant === variant.id : !s.variant),
+    )
+    const stockQty = stock ? stock.quantity : 0
+
+    const cartKey = variant ? `${product.id}-${variant.id}` : product.id
+    const existing = cart.find((i) => i.id === cartKey)
+    const currentQtyInCart = existing ? existing.quantity : 0
+
+    if (currentQtyInCart + 1 > stockQty) {
       toast({
-        title: 'Atenção',
-        description: 'Nome e telefone são obrigatórios.',
+        title: 'Estoque insuficiente',
+        description: `Disponível na loja: ${stockQty} unidade(s).`,
         variant: 'destructive',
       })
       return
     }
 
-    const normPhone = normalizePhone(newCustPhone)
-    const normDoc = normalizeDocument(newCustDoc)
+    const price = variant ? variant.sale_price : product.sale_price
+    const cost = (variant ? variant.cost_price : product.cost_price) || 0
+    const commRate = variant?.commission_rate || product.commission_rate
 
-    // Duplicate check
-    const existing = await CustomersService.checkDuplicate(normPhone, normDoc)
-    if (existing.length > 0 && !isDuplicateAlertOpen) {
-      setDuplicateCustomerFound(existing[0])
-      setIsDuplicateAlertOpen(true)
+    if (existing) {
+      setCart((prev) =>
+        prev.map((i) => (i.id === cartKey ? { ...i, quantity: i.quantity + 1 } : i)),
+      )
+    } else {
+      setCart((prev) => [
+        ...prev,
+        {
+          id: cartKey,
+          product,
+          variant,
+          quantity: 1,
+          sale_price: price,
+          cost_price: cost,
+          discount: 0,
+          stockAvailable: stockQty,
+          commission_rate: commRate,
+        },
+      ])
+    }
+  }
+
+  const handleUpdateQuantity = (id: string, delta: number) => {
+    setCart(
+      (prev) =>
+        prev
+          .map((item) => {
+            if (item.id === id) {
+              const newQty = item.quantity + delta
+              if (newQty <= 0) return null
+              if (newQty > item.stockAvailable) {
+                toast({
+                  title: 'Estoque insuficiente',
+                  description: `Disponível: ${item.stockAvailable}`,
+                  variant: 'destructive',
+                })
+                return item
+              }
+              return { ...item, quantity: newQty }
+            }
+            return item
+          })
+          .filter(Boolean) as CartItem[],
+    )
+  }
+
+  const handleUpdateDiscount = (id: string, val: number) => {
+    const item = cart.find((i) => i.id === id)
+    if (!item) return
+
+    const maxAllowedDiscount = (item.sale_price * item.quantity * maxDiscountPercent) / 100
+    if (!isAdmin && val > maxAllowedDiscount) {
+      toast({
+        title: 'Desconto acima do limite permitido',
+        description: `Seu perfil de vendedor permite no máximo ${maxDiscountPercent}% de desconto (R$ ${maxAllowedDiscount.toFixed(2)}).`,
+        variant: 'destructive',
+      })
       return
     }
 
+    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, discount: Math.max(0, val) } : i)))
+  }
+
+  const handleRemoveCartItem = (id: string) => {
+    setCart((prev) => prev.filter((i) => i.id !== id))
+  }
+
+  // Open add payment modal
+  const handleOpenAddPayment = () => {
+    setNewPayMethod('pix')
+    setNewPayAmount(remainingBalance > 0 ? remainingBalance : 0)
+    setNewPayCashGiven(remainingBalance > 0 ? remainingBalance : 0)
+    setNewPayInstallments(1)
+    if (accounts.length > 0) {
+      const matchStoreAcc = accounts.find((a) => a.store === selectedStoreId)
+      setNewPayAccount(matchStoreAcc ? matchStoreAcc.id : accounts[0].id)
+    }
+    setIsPaymentModalOpen(true)
+  }
+
+  // Confirm adding a payment entry
+  const handleAddPaymentConfirm = () => {
+    if (newPayAmount <= 0) {
+      toast({ title: 'Valor do pagamento deve ser maior que zero', variant: 'destructive' })
+      return
+    }
+
+    let receivedAmount: number | undefined = undefined
+    let changeAmount: number | undefined = undefined
+    let installmentValue = newPayAmount
+    let cardTaxRate = 0
+    let cardTaxAmount = 0
+    let netAmount = newPayAmount
+
+    if (newPayMethod === 'dinheiro') {
+      if (newPayCashGiven < newPayAmount) {
+        toast({
+          title: 'Valor entregue insuficiente',
+          description:
+            'O valor entregue em dinheiro deve ser maior ou igual ao valor aplicado à compra.',
+          variant: 'destructive',
+        })
+        return
+      }
+      receivedAmount = newPayCashGiven
+      changeAmount = Number((newPayCashGiven - newPayAmount).toFixed(2))
+    }
+
+    if (newPayMethod === 'cartao_credito') {
+      if (newPayInstallments > maxInstallmentsLimit) {
+        toast({
+          title: 'Parcelamento acima do limite',
+          description: `Limite máximo de parcelamento configurado: ${maxInstallmentsLimit}x`,
+          variant: 'destructive',
+        })
+        return
+      }
+      installmentValue = Number((newPayAmount / newPayInstallments).toFixed(2))
+      // Standard estimated fee rates for card receivables
+      cardTaxRate = newPayInstallments === 1 ? 3.0 : 3.0 + (newPayInstallments - 1) * 0.8
+      cardTaxAmount = Number(((newPayAmount * cardTaxRate) / 100).toFixed(2))
+      netAmount = Number((newPayAmount - cardTaxAmount).toFixed(2))
+    } else if (newPayMethod === 'cartao_debito') {
+      cardTaxRate = 1.8
+      cardTaxAmount = Number(((newPayAmount * cardTaxRate) / 100).toFixed(2))
+      netAmount = Number((newPayAmount - cardTaxAmount).toFixed(2))
+    }
+
+    const newEntry: PaymentEntry = {
+      id: Math.random().toString(36).substring(2, 9),
+      method: newPayMethod,
+      amount: newPayAmount,
+      received_amount: receivedAmount,
+      change_amount: changeAmount,
+      installments: newPayInstallments,
+      installment_value: installmentValue,
+      financial_account: newPayAccount || undefined,
+      card_tax_rate: cardTaxRate,
+      card_tax_amount: cardTaxAmount,
+      net_amount: netAmount,
+    }
+
+    setPayments((prev) => [...prev, newEntry])
+    setIsPaymentModalOpen(false)
+  }
+
+  const handleRemovePayment = (id: string) => {
+    setPayments((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  // Create new customer quick modal
+  const handleCreateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
+      toast({ title: 'Preencha nome e telefone do cliente', variant: 'destructive' })
+      return
+    }
     try {
       const created = await CustomersService.create({
-        name: newCustName.trim(),
-        phone: normPhone,
-        document: normDoc || undefined,
-        email: newCustEmail.trim() || undefined,
-        address: newCustAddress.trim() || undefined,
-        created_by: user?.id,
+        name: newCustomerName,
+        phone: newCustomerPhone,
+        document: newCustomerDoc,
+        email: newCustomerEmail,
       })
-
       setSelectedCustomer(created)
       setIsCustomerModalOpen(false)
-      setIsDuplicateAlertOpen(false)
-      setNewCustName('')
-      setNewCustPhone('')
-      setNewCustDoc('')
-      setNewCustEmail('')
-      setNewCustAddress('')
-
-      toast({ title: 'Cliente cadastrado e selecionado com sucesso!' })
+      setNewCustomerName('')
+      setNewCustomerPhone('')
+      setNewCustomerDoc('')
+      setNewCustomerEmail('')
+      toast({ title: 'Cliente cadastrado com sucesso!' })
     } catch (err: any) {
       toast({
         title: 'Erro ao cadastrar cliente',
@@ -212,720 +436,808 @@ export default function NewSale() {
     }
   }
 
-  // Add product to cart
-  const handleAddToCart = async (prod: ProductRecord) => {
-    // Check if product has variants
-    const variants = await ProductsService.getVariants(prod.id)
-    let chosenVariant: ProductVariantRecord | undefined = undefined
-
-    if (variants.length > 0) {
-      // Pick first or default variant
-      chosenVariant = variants[0] as unknown as ProductVariantRecord
-    }
-
-    const stockKey = chosenVariant ? `${prod.id}_${chosenVariant.id}` : `${prod.id}`
-    const available = stockMap[stockKey] || 0
-
-    if (available <= 0) {
-      toast({
-        title: 'Estoque Esgotado!',
-        description: `O produto "${prod.name}" não possui unidades disponíveis na loja selecionada.`,
-        variant: 'destructive',
-      })
+  // Handle final sale confirmation
+  const handleFinalizeSale = async (allowPendingBalance = false) => {
+    if (!selectedStoreId) {
+      toast({ title: 'Selecione a loja da venda', variant: 'destructive' })
       return
     }
-
-    const price = chosenVariant?.sale_price || prod.sale_price
-    const cost = chosenVariant?.cost_price || prod.cost_price
-
-    // Check if already in cart
-    const existingIdx = cart.findIndex(
-      (c) => c.productId === prod.id && c.variantId === (chosenVariant?.id || undefined),
-    )
-
-    if (existingIdx >= 0) {
-      const current = cart[existingIdx]
-      if (current.quantity + 1 > available) {
-        toast({
-          title: 'Limite de Estoque',
-          description: `Disponível em estoque: apenas ${available} unidades.`,
-          variant: 'destructive',
-        })
-        return
-      }
-      const updated = [...cart]
-      updated[existingIdx].quantity += 1
-      updated[existingIdx].total =
-        updated[existingIdx].quantity * updated[existingIdx].unitPrice -
-        updated[existingIdx].discount
-      setCart(updated)
-    } else {
-      const newItem: CartItem = {
-        productId: prod.id,
-        variantId: chosenVariant?.id,
-        name: chosenVariant ? `${prod.name} (${chosenVariant.name})` : prod.name,
-        sku: chosenVariant?.sku || prod.sku,
-        unitPrice: price,
-        costPrice: cost,
-        quantity: 1,
-        discount: 0,
-        total: price,
-        trackSerial: prod.track_serial,
-        availableStock: available,
-      }
-      setCart([...cart, newItem])
-    }
-  }
-
-  // Cart operations
-  const updateQuantity = (idx: number, newQty: number) => {
-    if (newQty <= 0) {
-      removeFromCart(idx)
-      return
-    }
-    const item = cart[idx]
-    if (newQty > item.availableStock) {
-      toast({
-        title: 'Estoque insuficiente',
-        description: `Disponível na loja: apenas ${item.availableStock} un.`,
-        variant: 'destructive',
-      })
-      return
-    }
-    const updated = [...cart]
-    updated[idx].quantity = newQty
-    updated[idx].total = newQty * updated[idx].unitPrice - updated[idx].discount
-    setCart(updated)
-  }
-
-  const updateDiscount = (idx: number, discValue: number) => {
-    const item = cart[idx]
-    const subtotal = item.quantity * item.unitPrice
-
-    // Validate discount against limits
-    let maxAllowedPct = limits.maxPix
-    if (paymentMethod === 'dinheiro') maxAllowedPct = limits.maxCash
-    if (paymentMethod === 'cartao_credito') maxAllowedPct = limits.maxCard
-
-    const maxAllowedReais = (subtotal * maxAllowedPct) / 100
-
-    if (discValue > maxAllowedReais) {
-      toast({
-        title: 'Desconto não autorizado!',
-        description: `O desconto máximo permitido para ${paymentMethod.toUpperCase()} é ${maxAllowedPct}% (${formatBRL(maxAllowedReais)}).`,
-        variant: 'destructive',
-      })
-      return
-    }
-
-    const updated = [...cart]
-    updated[idx].discount = discValue
-    updated[idx].total = subtotal - discValue
-    setCart(updated)
-  }
-
-  const updateSerialNumber = (idx: number, serial: string) => {
-    const updated = [...cart]
-    updated[idx].serialNumber = serial
-    setCart(updated)
-  }
-
-  const removeFromCart = (idx: number) => {
-    const updated = cart.filter((_, i) => i !== idx)
-    setCart(updated)
-  }
-
-  // Totals
-  const subtotal = cart.reduce((acc, it) => acc + it.quantity * it.unitPrice, 0)
-  const totalDiscount = cart.reduce((acc, it) => acc + (it.discount || 0), 0)
-  const finalTotal = subtotal - totalDiscount
-
-  // Confirm Sale
-  const handleConfirmSale = async (isDraft = false) => {
     if (!selectedCustomer) {
-      toast({
-        title: 'Atenção',
-        description: 'Selecione ou cadastre o cliente antes de finalizar.',
-        variant: 'destructive',
-      })
+      toast({ title: 'Selecione ou cadastre o cliente', variant: 'destructive' })
       return
     }
     if (cart.length === 0) {
-      toast({
-        title: 'Carrinho vazio',
-        description: 'Adicione pelo menos um produto.',
-        variant: 'destructive',
-      })
+      toast({ title: 'Adicione ao menos um produto no carrinho', variant: 'destructive' })
       return
     }
 
-    // Check serial numbers for tracked products
-    for (const it of cart) {
-      if (it.trackSerial && !it.serialNumber && !isDraft) {
+    // Check payment coverage
+    if (!isExactPayment && !allowPendingBalance) {
+      if (!isAdmin) {
         toast({
-          title: 'Número de Série Obrigatório',
-          description: `Informe o número de série da unidade para o produto "${it.name}".`,
+          title: 'Saldo pendente não autorizado',
+          description: `Venda com saldo restante de ${formatBRL(remainingBalance)} exige autorização administrativa.`,
           variant: 'destructive',
         })
+        return
+      } else {
+        // Admin can authorize or open authorization modal
+        setIsAuthModalOpen(true)
         return
       }
     }
 
+    // Submit sale to server
     setIsSubmitting(true)
     try {
-      const sale = await SalesService.createSale({
-        customer: selectedCustomer.id,
-        store: selectedStoreId,
-        seller: user!.id,
-        items: cart.map((it) => ({
-          product: it.productId,
-          variant: it.variantId,
-          product_name: it.name,
-          sku: it.sku,
-          sale_price: it.unitPrice,
-          costPrice: it.costPrice,
-          quantity: it.quantity,
-          discount: it.discount,
-          total: it.total,
-          serial_number: it.serialNumber,
+      // 1. Create draft sale with items and payments
+      const draft = await SalesService.createDraftSale(
+        {
+          customer: selectedCustomer.id,
+          store: selectedStoreId,
+          seller: user?.id,
+          subtotal,
+          total_discount: totalDiscount,
+          total,
+          observation: notes,
+          authorized_by: allowPendingBalance ? user?.id : undefined,
+          authorization_note: allowPendingBalance
+            ? authReason || 'Saldo pendente autorizado pelo administrador'
+            : undefined,
+          payment: payments[0]?.method || 'pix',
+          installments: payments[0]?.installments || 1,
+        },
+        cart.map((i) => ({
+          product: i.product.id,
+          variant: i.variant?.id,
+          product_name: i.variant ? `${i.product.name} - ${i.variant.name}` : i.product.name,
+          sku: i.variant ? i.variant.sku : i.product.sku,
+          sale_price: i.sale_price,
+          cost_price: i.cost_price,
+          quantity: i.quantity,
+          discount: i.discount,
+          total: i.sale_price * i.quantity - i.discount,
+          serial_number: i.serial_number,
         })),
-        subtotal: subtotal,
-        total_discount: totalDiscount,
-        total: finalTotal,
-        payment: paymentMethod,
-        allow_installments: paymentMethod === 'cartao_credito' && installments > 1,
-        installments: installments,
-        observation: saleObservation,
-        isDraft: isDraft,
-      })
+        payments.map((p) => ({
+          method: p.method,
+          amount: p.amount,
+          received_amount: p.received_amount,
+          change_amount: p.change_amount,
+          installments: p.installments,
+          installment_value: p.installment_value,
+          financial_account: p.financial_account,
+          card_tax_rate: p.card_tax_rate,
+          card_tax_amount: p.card_tax_amount,
+          net_amount: p.net_amount,
+        })),
+      )
 
-      const fullStore = stores.find((s) => s.id === selectedStoreId)
-
-      setConfirmedSaleData({
-        sale: sale,
-        items: cart,
-        customer: selectedCustomer,
-        store: fullStore,
-        seller: user,
-      })
+      // 2. Call atomic confirmation endpoint on backend
+      // Runs in PocketBase transaction: checks monthly closing, validates stock, decrements stock once,
+      // writes stock movements, calculates commission item-by-item and creates audit log
+      const confRes = await SalesService.confirmSale(draft.id)
 
       toast({
-        title: isDraft ? 'Rascunho salvo!' : 'Venda confirmada!',
-        description: `Venda ${sale.number} registrada com sucesso.`,
+        title: 'Venda confirmada com sucesso!',
+        description: `Venda ${confRes.number} registrada com baixa de estoque consistente.`,
       })
+
+      setCompletedSale({ id: draft.id, number: confRes.number })
+      setIsAuthModalOpen(false)
     } catch (err: any) {
-      console.error('Sale error:', err)
-      toast({ title: 'Erro ao processar venda', description: err.message, variant: 'destructive' })
+      toast({
+        title: 'Erro ao confirmar venda',
+        description: err.message || 'Falha ao processar confirmação.',
+        variant: 'destructive',
+      })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // If sale confirmed, render printable receipt view
-  if (confirmedSaleData) {
+  // After sale completed modal / receipt
+  if (completedSale) {
     return (
-      <SaleReceipt
-        sale={confirmedSaleData.sale}
-        items={confirmedSaleData.items}
-        customer={confirmedSaleData.customer}
-        store={confirmedSaleData.store}
-        seller={confirmedSaleData.seller}
-        onClose={() => {
-          setConfirmedSaleData(null)
-          setCart([])
-          setSelectedCustomer(null)
-          setCustomerSearch('')
-          navigate('/minhas-vendas')
-        }}
-      />
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="flex items-center justify-between">
+          <Button variant="outline" onClick={() => navigate('/sales')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar para Lista de Vendas
+          </Button>
+          <Button
+            onClick={() => {
+              setCompletedSale(null)
+              setCart([])
+              setPayments([])
+              setSelectedCustomer(null)
+              setNotes('')
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Venda
+          </Button>
+        </div>
+
+        <Card className="border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 mb-2">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <CardTitle className="text-2xl text-emerald-700 dark:text-emerald-400">
+              Venda {completedSale.number} Concluída!
+            </CardTitle>
+            <CardDescription>
+              Estoque baixado com sucesso, comissões geradas e pagamentos registrados na tesouraria.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <SaleReceipt saleId={completedSale.id} />
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
-  const activeStoreObj = stores.find((s) => s.id === selectedStoreId)
-
   return (
     <div className="space-y-6">
-      {/* HEADER BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-[#111111]">
-            Balcão de Atendimento — Nova Venda
-          </h2>
-          <p className="text-xs text-gray-500">
-            Unidade: <strong>{activeStoreObj?.name}</strong> • Vendedor:{' '}
-            <strong>{user?.name}</strong>
-          </p>
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Nova Venda Balcão</h1>
+            <p className="text-sm text-muted-foreground">
+              New Way Eletric • Unidades Shopping Jockey Plaza e Loja Rua Cajuru
+            </p>
+          </div>
         </div>
 
-        {/* Change Store (if multiple authorized) */}
-        {authorizedStores.length > 1 && (
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-gray-600">Loja da Venda:</Label>
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-52 h-9 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {authorizedStores.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {/* Store selector */}
+        <div className="w-full sm:w-64">
+          <Label className="text-xs text-muted-foreground mb-1 block">Unidade da Venda</Label>
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a loja" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: CLIENTE & CATÁLOGO DE PRODUTOS (7 Cols) */}
+        {/* Left column: Products catalog & selection */}
         <div className="lg:col-span-7 space-y-6">
-          {/* 1. SELEÇÃO DE CLIENTE */}
-          <Card className="bg-white border-0 shadow-sm rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-sm text-[#111111] flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-[#0A8F5C]" /> 1. Identificação do Cliente
-              </h3>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsCustomerModalOpen(true)}
-                className="text-xs text-[#0A8F5C] border-[#0A8F5C] hover:bg-emerald-50"
-              >
-                <UserPlus className="h-3.5 w-3.5 mr-1" /> Cadastro Rápido
-              </Button>
-            </div>
-
-            {selectedCustomer ? (
-              <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/60 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-xs text-gray-900">{selectedCustomer.name}</p>
-                  <p className="text-[11px] text-gray-600">
-                    Tel: {selectedCustomer.phone}{' '}
-                    {selectedCustomer.document && `• CPF: ${selectedCustomer.document}`}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelectedCustomer(null)}
-                  className="text-xs text-red-600 hover:text-red-700"
-                >
-                  Trocar
+          {/* Customer Selection Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">
+                  1. Identificação do Cliente
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setIsCustomerModalOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-1.5" />
+                  Novo Cliente
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Pesquisar cliente por nome, telefone ou CPF..."
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    className="pl-9 h-10 text-xs"
-                  />
-                </div>
-
-                {customerResults.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm divide-y divide-gray-100">
-                    {customerResults.map((c) => (
-                      <div
-                        key={c.id}
-                        onClick={() => {
-                          setSelectedCustomer(c)
-                          setCustomerSearch('')
-                          setCustomerResults([])
-                        }}
-                        className="p-2.5 text-xs hover:bg-gray-50 cursor-pointer flex justify-between items-center"
-                      >
-                        <div>
-                          <p className="font-semibold text-gray-800">{c.name}</p>
-                          <p className="text-[11px] text-gray-500">
-                            {c.phone} {c.document && `• ${c.document}`}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-[10px]">
-                          Selecionar
-                        </Badge>
-                      </div>
-                    ))}
+            </CardHeader>
+            <CardContent>
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/40">
+                  <div>
+                    <p className="font-medium text-sm">{selectedCustomer.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Tel: {selectedCustomer.phone}{' '}
+                      {selectedCustomer.document && `• CPF/CNPJ: ${selectedCustomer.document}`}
+                    </p>
                   </div>
-                )}
-              </div>
-            )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedCustomer(null)}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Alterar
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por nome, telefone ou CPF..."
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {isSearchingCustomer && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Buscando clientes...
+                    </p>
+                  )}
+
+                  {customerResults.length > 0 && (
+                    <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                      {customerResults.map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-2 hover:bg-accent cursor-pointer flex justify-between items-center text-sm"
+                          onClick={() => {
+                            setSelectedCustomer(c)
+                            setCustomerSearch('')
+                            setCustomerResults([])
+                          }}
+                        >
+                          <div>
+                            <p className="font-medium">{c.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.phone} {c.document && `• ${c.document}`}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            Selecionar
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
           </Card>
 
-          {/* 2. CATÁLOGO RÁPIDO DE PRODUTOS */}
-          <Card className="bg-white border-0 shadow-sm rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-sm text-[#111111] flex items-center gap-2">
-                <Package className="h-4 w-4 text-[#0A8F5C]" /> 2. Adicionar Produtos ao Pedido
-              </h3>
-              <Input
-                placeholder="Buscar produto..."
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                className="w-48 h-8 text-xs"
-              />
-            </div>
+          {/* Products Catalog selection */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">
+                2. Catálogo de Produtos e Veículos
+              </CardTitle>
+              <CardDescription>
+                Patinetes Navee e Segway Ninebot, scooters, bikes e acessórios em estoque na unidade
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1">
+                {products.map((p) => {
+                  const stock = stockItems.find((s) => s.product === p.id && !s.variant)
+                  const qty = stock ? stock.quantity : 0
+                  const isAvailable = qty > 0
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-              {products
-                .filter(
-                  (p) =>
-                    p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-                    p.brand?.toLowerCase().includes(productSearch.toLowerCase()),
-                )
-                .map((prod) => {
-                  const stock = stockMap[prod.id] || 0
                   return (
                     <div
-                      key={prod.id}
-                      className="p-3 rounded-lg border border-gray-200 bg-white hover:border-[#0A8F5C] hover:shadow-sm transition-all flex flex-col justify-between"
+                      key={p.id}
+                      className={`p-3 rounded-lg border text-left transition-all ${
+                        isAvailable
+                          ? 'hover:border-primary/50 hover:bg-accent/40 cursor-pointer'
+                          : 'opacity-50 cursor-not-allowed bg-muted/20'
+                      }`}
+                      onClick={() => isAvailable && handleAddToCart(p)}
                     >
-                      <div>
-                        <div className="flex justify-between items-start gap-2">
-                          <p className="font-bold text-xs text-[#111111] leading-snug">
-                            {prod.name}
-                          </p>
-                          <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              stock > 0
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {stock > 0 ? `${stock} em estoque` : 'Esgotado'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {prod.brand} • {prod.model}
-                        </p>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between pt-2 border-t border-gray-100">
-                        <span className="font-extrabold text-sm text-[#0A8F5C]">
-                          {formatBRL(prod.sale_price)}
-                        </span>
-                        <Button
-                          size="sm"
-                          disabled={stock <= 0}
-                          onClick={() => handleAddToCart(prod)}
-                          className="h-7 text-xs bg-[#111111] hover:bg-[#0A8F5C] text-white"
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="font-medium text-sm line-clamp-1">{p.name}</p>
+                        <Badge
+                          variant={isAvailable ? 'secondary' : 'outline'}
+                          className={`text-[10px] shrink-0 ${isAvailable ? 'text-emerald-600' : 'text-red-500'}`}
                         >
-                          Adicionar
-                        </Button>
+                          {isAvailable ? `${qty} em estoque` : 'Esgotado'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">SKU: {p.sku}</p>
+                      <div className="flex justify-between items-end mt-2">
+                        <span className="text-sm font-semibold text-primary">
+                          {formatBRL(p.sale_price)}
+                        </span>
+                        {isAvailable && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Adicionar
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )
                 })}
-            </div>
+              </div>
+            </CardContent>
           </Card>
         </div>
 
-        {/* RIGHT COLUMN: CARRINHO & FECHAMENTO (5 Cols) */}
+        {/* Right column: Cart, Mixed Payments and Checkout */}
         <div className="lg:col-span-5 space-y-6">
-          <Card className="bg-white border-0 shadow-sm rounded-xl p-5">
-            <h3 className="font-bold text-sm text-[#111111] mb-3 flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-[#0A8F5C]" /> 3. Itens do Pedido ({cart.length})
-            </h3>
-
-            {/* CART ITEMS LIST */}
-            <div className="space-y-3 max-h-72 overflow-y-auto divide-y divide-gray-100">
-              {cart.map((item, idx) => (
-                <div key={idx} className="pt-2 first:pt-0">
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <p className="font-semibold text-xs text-[#111111] leading-snug">
-                        {item.name}
-                      </p>
-                      <p className="text-[10px] text-gray-400">Unit: {formatBRL(item.unitPrice)}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeFromCart(idx)}
-                      className="h-6 w-6 text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-
-                  {/* Quantity & Discount Inputs */}
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-gray-500">Qtd:</span>
-                      <Input
-                        type="number"
-                        min="1"
-                        max={item.availableStock}
-                        value={item.quantity}
-                        onChange={(e) => updateQuantity(idx, Number(e.target.value))}
-                        className="h-7 w-16 text-xs text-center"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <span className="text-[11px] text-gray-500">Desc R$:</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={item.discount}
-                        onChange={(e) => updateDiscount(idx, Number(e.target.value))}
-                        className="h-7 w-20 text-xs text-right"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Serial Number if tracked */}
-                  {item.trackSerial && (
-                    <div className="mt-2">
-                      <Input
-                        placeholder="Nº de Série da unidade (Obrigatório)*"
-                        value={item.serialNumber || ''}
-                        onChange={(e) => updateSerialNumber(idx, e.target.value)}
-                        className="h-7 text-[11px] bg-amber-50/50 border-amber-200"
-                      />
-                    </div>
-                  )}
-
-                  <div className="mt-1 text-right font-bold text-xs text-[#111111]">
-                    Subtotal: {formatBRL(item.total)}
-                  </div>
-                </div>
-              ))}
-
-              {cart.length === 0 && (
-                <div className="py-8 text-center text-xs text-gray-400">
-                  Nenhum item adicionado ao pedido ainda.
-                </div>
-              )}
-            </div>
-
-            {/* PAYMENT METHOD SELECTION */}
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-              <Label className="text-xs font-semibold text-gray-700">Forma de Pagamento</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('pix')}
-                  className={`p-2.5 rounded-lg border text-center transition-all ${
-                    paymentMethod === 'pix'
-                      ? 'border-[#11C76F] bg-emerald-50 text-emerald-900 font-bold ring-1 ring-[#11C76F]'
-                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <QrCode className="h-4 w-4 mx-auto mb-1 text-[#11C76F]" />
-                  <span className="text-[11px] block">Pix (à vista)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('dinheiro')}
-                  className={`p-2.5 rounded-lg border text-center transition-all ${
-                    paymentMethod === 'dinheiro'
-                      ? 'border-[#F59E0B] bg-amber-50 text-amber-900 font-bold ring-1 ring-[#F59E0B]'
-                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <DollarSign className="h-4 w-4 mx-auto mb-1 text-[#F59E0B]" />
-                  <span className="text-[11px] block">Dinheiro</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('cartao_credito')}
-                  className={`p-2.5 rounded-lg border text-center transition-all ${
-                    paymentMethod === 'cartao_credito'
-                      ? 'border-[#3B82F6] bg-blue-50 text-blue-900 font-bold ring-1 ring-[#3B82F6]'
-                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <CreditCard className="h-4 w-4 mx-auto mb-1 text-[#3B82F6]" />
-                  <span className="text-[11px] block">Cartão</span>
-                </button>
-              </div>
-
-              {/* Installments selector if card */}
-              {paymentMethod === 'cartao_credito' && (
-                <div className="space-y-1 pt-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-600">Número de Parcelas:</span>
-                    <span className="text-gray-400 text-[10px]">
-                      limite da loja: {limits.maxInstallments}x
-                    </span>
-                  </div>
-                  <Select
-                    value={String(installments)}
-                    onValueChange={(val) => setInstallments(Number(val))}
+          {/* Cart Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">
+                  Itens da Venda ({cart.length})
+                </CardTitle>
+                {cart.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCart([])}
+                    className="text-xs text-red-500 hover:text-red-600"
                   >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: limits.maxInstallments }, (_, i) => i + 1).map((n) => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n}x de {formatBRL(finalTotal / n)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-
-            {/* TOTALS SUMMARY */}
-            <div className="mt-4 pt-4 border-t border-gray-200 space-y-1.5 text-xs">
-              <div className="flex justify-between text-gray-600">
-                <span>Subtotal:</span>
-                <span>{formatBRL(subtotal)}</span>
-              </div>
-              {totalDiscount > 0 && (
-                <div className="flex justify-between text-red-600">
-                  <span>Desconto:</span>
-                  <span>-{formatBRL(totalDiscount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-black text-[#111111] pt-1">
-                <span>TOTAL A PAGAR:</span>
-                <span className="text-[#0A8F5C]">{formatBRL(finalTotal)}</span>
-              </div>
-            </div>
-
-            {/* ACTION BUTTONS */}
-            <div className="mt-6 space-y-2">
-              <Button
-                disabled={isSubmitting || cart.length === 0}
-                onClick={() => handleConfirmSale(false)}
-                className="w-full h-11 bg-[#0A8F5C] hover:bg-[#087A4D] text-white font-bold text-sm shadow-md rounded-lg flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Processando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" /> Confirmar Venda & Emitir Comprovante
-                  </>
+                    Limpar
+                  </Button>
                 )}
-              </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {cart.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-lg">
+                  Nenhum produto adicionado ao carrinho.
+                </div>
+              ) : (
+                <div className="divide-y max-h-64 overflow-y-auto pr-1">
+                  {cart.map((item) => (
+                    <div key={item.id} className="py-2.5 first:pt-0 last:pb-0 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-medium leading-none">
+                            {item.variant
+                              ? `${item.product.name} (${item.variant.name})`
+                              : item.product.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatBRL(item.sale_price)} un.
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleRemoveCartItem(item.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
 
-              <Button
-                variant="outline"
-                disabled={isSubmitting || cart.length === 0}
-                onClick={() => handleConfirmSale(true)}
-                className="w-full h-9 text-xs text-gray-600"
-              >
-                Salvar apenas como Rascunho
-              </Button>
-            </div>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {/* Quantity changer */}
+                        <div className="flex items-center border rounded-md h-7">
+                          <button
+                            type="button"
+                            className="px-2 text-xs hover:bg-muted"
+                            onClick={() => handleUpdateQuantity(item.id, -1)}
+                          >
+                            -
+                          </button>
+                          <span className="px-2 text-xs font-semibold">{item.quantity}</span>
+                          <button
+                            type="button"
+                            className="px-2 text-xs hover:bg-muted"
+                            onClick={() => handleUpdateQuantity(item.id, 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Item discount */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">Desc:</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={item.discount || ''}
+                            onChange={(e) =>
+                              handleUpdateDiscount(item.id, parseFloat(e.target.value) || 0)
+                            }
+                            placeholder="0,00"
+                            className="h-7 w-20 text-xs text-right"
+                          />
+                        </div>
+
+                        {/* Item total */}
+                        <span className="text-sm font-semibold">
+                          {formatBRL(item.sale_price * item.quantity - item.discount)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Totals Breakdown */}
+              <div className="border-t pt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>{formatBRL(subtotal)}</span>
+                </div>
+                {totalDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Desconto Total</span>
+                    <span>- {formatBRL(totalDiscount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold pt-1 border-t">
+                  <span>Total a Pagar</span>
+                  <span className="text-primary">{formatBRL(total)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Payments Card (Mixed Payment Allowed) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold">3. Formas de Pagamento</CardTitle>
+                  <CardDescription className="text-xs">
+                    Permite pagamento misto (Pix, Dinheiro, Débito e Crédito)
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenAddPayment}
+                  disabled={cart.length === 0}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {payments.length === 0 ? (
+                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  Nenhum pagamento registrado. Clique em "+ Adicionar".
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {payments.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        {p.method === 'pix' && <QrCode className="h-4 w-4 text-emerald-600" />}
+                        {p.method === 'dinheiro' && <Banknote className="h-4 w-4 text-amber-600" />}
+                        {p.method === 'cartao_credito' && (
+                          <CreditCard className="h-4 w-4 text-blue-600" />
+                        )}
+                        {p.method === 'cartao_debito' && (
+                          <CreditCard className="h-4 w-4 text-indigo-600" />
+                        )}
+                        <div>
+                          <p className="font-medium capitalize">
+                            {p.method.replace('_', ' ')}
+                            {p.method === 'cartao_credito' &&
+                              ` (${p.installments}x de ${formatBRL(p.installment_value)})`}
+                          </p>
+                          {p.method === 'dinheiro' && p.change_amount ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              Entregue: {formatBRL(p.received_amount || 0)} • Troco:{' '}
+                              {formatBRL(p.change_amount)}
+                            </p>
+                          ) : null}
+                          {p.net_amount && p.net_amount !== p.amount ? (
+                            <p className="text-[10px] text-muted-foreground">
+                              Taxa operadora: {p.card_tax_rate}% (líquido: {formatBRL(p.net_amount)}
+                              )
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{formatBRL(p.amount)}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleRemovePayment(p.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Balance status */}
+              <div className="p-2.5 rounded-lg border bg-muted/30 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Registrado:</span>
+                  <span className="font-semibold">{formatBRL(totalPaid)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Saldo Restante:</span>
+                  <span
+                    className={`font-bold ${
+                      remainingBalance === 0 ? 'text-emerald-600' : 'text-amber-600'
+                    }`}
+                  >
+                    {formatBRL(remainingBalance)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Observation field */}
+              <div>
+                <Label className="text-xs text-muted-foreground">Observações da Venda</Label>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Informações adicionais, detalhes de garantia ou entrega..."
+                  rows={2}
+                  className="text-xs mt-1"
+                />
+              </div>
+
+              {/* Action button */}
+              <div className="pt-2">
+                <Button
+                  className="w-full"
+                  size="lg"
+                  disabled={cart.length === 0 || !selectedCustomer || isSubmitting}
+                  onClick={() => handleFinalizeSale(false)}
+                >
+                  {isSubmitting ? (
+                    'Processando Confirmação...'
+                  ) : isExactPayment ? (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Confirmar Venda e Baixar Estoque
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      {isAdmin
+                        ? 'Confirmar com Saldo Pendente (Admin)'
+                        : 'Exige Autorização de Saldo'}
+                    </>
+                  )}
+                </Button>
+                <p className="text-[11px] text-muted-foreground text-center mt-1.5">
+                  Baixa de estoque e cálculo de comissão acontecem na confirmação com controle de
+                  concorrência.
+                </p>
+              </div>
+            </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* MODAL QUICK CUSTOMER REGISTRATION */}
-      <Dialog open={isCustomerModalOpen} onOpenChange={setIsCustomerModalOpen}>
-        <DialogContent className="sm:max-w-[460px] bg-white">
+      {/* MODAL: ADD PAYMENT */}
+      <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cadastro Rápido de Cliente</DialogTitle>
+            <DialogTitle>Registrar Forma de Pagamento</DialogTitle>
             <DialogDescription>
-              Base compartilhada única para as lojas Shopping Jockey Plaza e Cajuru.
+              Pagamento registrado manualmente. Não armazene dados sigilosos de cartão.
             </DialogDescription>
           </DialogHeader>
 
-          {isDuplicateAlertOpen && duplicateCustomerFound && (
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
-              <p className="font-bold flex items-center gap-1.5">
-                <AlertCircle className="h-4 w-4 text-amber-600" /> Possível duplicidade detectada!
-              </p>
-              <p>
-                Já existe um cliente cadastrado com este telefone/documento:{' '}
-                <strong>{duplicateCustomerFound.name}</strong> ({duplicateCustomerFound.phone}).
-              </p>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setSelectedCustomer(duplicateCustomerFound)
-                    setIsCustomerModalOpen(false)
-                    setIsDuplicateAlertOpen(false)
-                  }}
-                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7"
-                >
-                  Usar Cliente Existente
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleQuickCustomer}
-                  className="text-xs h-7"
-                >
-                  Cadastrar Mesmo Assim
-                </Button>
-              </div>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Modalidade</Label>
+              <Select
+                value={newPayMethod}
+                onValueChange={(val) => setNewPayMethod(val as PaymentMethod)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">Pix</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro Físico</SelectItem>
+                  <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                  <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          )}
 
-          <form onSubmit={handleQuickCustomer} className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Nome Completo *</Label>
+            <div>
+              <Label>Valor Aplicado à Venda (R$)</Label>
               <Input
-                value={newCustName}
-                onChange={(e) => setNewCustName(e.target.value)}
-                placeholder="Ex: João Silva"
-                required
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={newPayAmount || ''}
+                onChange={(e) => setNewPayAmount(parseFloat(e.target.value) || 0)}
+                className="mt-1 font-semibold"
               />
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Saldo restante da venda: {formatBRL(remainingBalance)}
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Telefone / WhatsApp *</Label>
+            {/* Cash details */}
+            {newPayMethod === 'dinheiro' && (
+              <div className="p-3 rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 space-y-2">
+                <Label>Valor Entregue pelo Cliente (R$)</Label>
                 <Input
-                  value={newCustPhone}
-                  onChange={(e) => setNewCustPhone(e.target.value)}
-                  placeholder="(41) 99999-9999"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={newPayCashGiven || ''}
+                  onChange={(e) => setNewPayCashGiven(parseFloat(e.target.value) || 0)}
+                  placeholder="Ex: 100,00"
+                />
+                <div className="flex justify-between text-xs pt-1">
+                  <span>Troco a devolver:</span>
+                  <span className="font-bold text-amber-700 dark:text-amber-400">
+                    {formatBRL(Math.max(0, newPayCashGiven - newPayAmount))}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Credit card installments */}
+            {newPayMethod === 'cartao_credito' && (
+              <div className="space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
+                <div>
+                  <Label>Parcelamento (Máx: {maxInstallmentsLimit}x)</Label>
+                  <Select
+                    value={String(newPayInstallments)}
+                    onValueChange={(v) => setNewPayInstallments(parseInt(v, 10))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: maxInstallmentsLimit }, (_, i) => i + 1).map((n) => {
+                        const instVal = newPayAmount > 0 ? (newPayAmount / n).toFixed(2) : '0.00'
+                        return (
+                          <SelectItem key={n} value={String(n)}>
+                            {n}x de R$ {instVal} {n === 1 ? '(à vista)' : ''}
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Gera recebíveis da operadora no financeiro sem duplicar receita.
+                </p>
+              </div>
+            )}
+
+            {/* Financial account destination for admin */}
+            {isAdmin && accounts.length > 0 && (
+              <div>
+                <Label>Conta Financeira de Destino</Label>
+                <Select value={newPayAccount} onValueChange={setNewPayAccount}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione caixa ou conta..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.type.replace('_', ' ')})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAddPaymentConfirm}>Adicionar Pagamento</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: NEW CUSTOMER */}
+      <Dialog open={isCustomerModalOpen} onOpenChange={setIsCustomerModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleCreateCustomer}>
+            <DialogHeader>
+              <DialogTitle>Novo Cliente</DialogTitle>
+              <DialogDescription>
+                Cadastre o cliente para vincular à venda e emissão de recibo/documentos.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-3">
+              <div>
+                <Label>Nome Completo *</Label>
+                <Input
                   required
+                  value={newCustomerName}
+                  onChange={(e) => setNewCustomerName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="mt-1"
                 />
               </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">CPF ou CNPJ (opcional)</Label>
+              <div>
+                <Label>Telefone / WhatsApp *</Label>
                 <Input
-                  value={newCustDoc}
-                  onChange={(e) => setNewCustDoc(e.target.value)}
-                  placeholder="Apenas números"
+                  required
+                  value={newCustomerPhone}
+                  onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  placeholder="(41) 99999-9999"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>CPF ou CNPJ</Label>
+                <Input
+                  value={newCustomerDoc}
+                  onChange={(e) => setNewCustomerDoc(e.target.value)}
+                  placeholder="000.000.000-00"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>E-mail</Label>
+                <Input
+                  type="email"
+                  value={newCustomerEmail}
+                  onChange={(e) => setNewCustomerEmail(e.target.value)}
+                  placeholder="cliente@email.com"
+                  className="mt-1"
                 />
               </div>
             </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">E-mail (opcional)</Label>
-              <Input
-                type="email"
-                value={newCustEmail}
-                onChange={(e) => setNewCustEmail(e.target.value)}
-                placeholder="cliente@email.com"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Endereço (opcional)</Label>
-              <Input
-                value={newCustAddress}
-                onChange={(e) => setNewCustAddress(e.target.value)}
-                placeholder="Rua, número, bairro, Curitiba/PR"
-              />
-            </div>
-
-            <DialogFooter className="pt-3">
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCustomerModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white">
-                Cadastrar e Selecionar
-              </Button>
+              <Button type="submit">Cadastrar e Vincular</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: ADMIN AUTHORIZATION FOR PENDING BALANCE */}
+      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Autorização de Saldo Pendente
+            </DialogTitle>
+            <DialogDescription>
+              O total pago ({formatBRL(totalPaid)}) é inferior ao total da venda ({formatBRL(total)}
+              ). O saldo pendente de {formatBRL(remainingBalance)} ficará registrado como contas a
+              receber do cliente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Justificativa Administrativa *</Label>
+              <Textarea
+                required
+                value={authReason}
+                onChange={(e) => setAuthReason(e.target.value)}
+                placeholder="Ex: Pagamento da entrada realizado, restante a acertar na entrega ou boleto bancário..."
+                className="mt-1"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAuthModalOpen(false)}>
+              Voltar e Ajustar Pagamentos
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700"
+              disabled={!authReason.trim() || isSubmitting}
+              onClick={() => handleFinalizeSale(true)}
+            >
+              Autorizar e Confirmar Venda
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,248 +1,216 @@
-import pb from '@/lib/pocketbase/client'
+import { pb } from '@/lib/pocketbase/client'
 import type {
   StoreRecord,
   ProductRecord,
+  ProductVariantRecord,
+  CategoryRecord,
   CustomerRecord,
+  StockItemRecord,
+  StockMovementRecord,
+  TransferRecord,
+  TransferItemRecord,
   SaleRecord,
+  SaleItemRecord,
+  SalePaymentRecord,
+  SaleDocumentRecord,
+  CommissionRecord,
   CommissionRuleRecord,
   SettingRecord,
-  CategoryRecord,
-  TransferRecord,
-  CommissionRecord,
-  ExpenseRecord,
-  PaymentLedgerRecord,
+  FinancialAccountRecord,
+  FinancialCategoryRecord,
+  FinancialTransactionRecord,
+  CardReceivableRecord,
+  RecurringExpenseRecord,
+  ExpenseAllocationRecord,
+  SaleReturnRecord,
+  MonthlyClosingRecord,
+  AuditLogRecord,
 } from '@/types'
 
 export const StoresService = {
-  async getAll() {
-    return pb.collection<StoreRecord>('stores').getFullList({ sort: 'name' })
+  async list(): Promise<StoreRecord[]> {
+    return await pb.collection('stores').getFullList<StoreRecord>({
+      sort: 'name',
+    })
   },
-  async getById(id: string) {
-    return pb.collection<StoreRecord>('stores').getOne(id)
-  },
-  async update(id: string, data: Partial<StoreRecord>) {
-    return pb.collection<StoreRecord>('stores').update(id, data)
-  },
-  async create(data: Partial<StoreRecord>) {
-    return pb.collection<StoreRecord>('stores').create(data)
+
+  async getById(id: string): Promise<StoreRecord> {
+    return await pb.collection('stores').getOne<StoreRecord>(id)
   },
 }
 
 export const ProductsService = {
-  async getAll(filter = '') {
-    return pb.collection<ProductRecord>('products').getFullList({
+  async list(filter = ''): Promise<ProductRecord[]> {
+    return await pb.collection('products').getFullList<ProductRecord>({
       filter,
       sort: 'name',
       expand: 'category',
     })
   },
-  async getById(id: string) {
-    return pb.collection<ProductRecord>('products').getOne(id, {
+
+  async getById(id: string): Promise<ProductRecord> {
+    return await pb.collection('products').getOne<ProductRecord>(id, {
       expand: 'category',
     })
   },
-  async getVariants(productId: string) {
-    return pb.collection('product_variants').getFullList({
+
+  async listCategories(): Promise<CategoryRecord[]> {
+    return await pb.collection('categories').getFullList<CategoryRecord>({
+      sort: 'name',
+    })
+  },
+
+  async listVariants(productId: string): Promise<ProductVariantRecord[]> {
+    return await pb.collection('product_variants').getFullList<ProductVariantRecord>({
       filter: `product = '${productId}'`,
       sort: 'name',
     })
   },
-  async create(data: FormData | Partial<ProductRecord>) {
-    return pb.collection<ProductRecord>('products').create(data)
+
+  async create(data: Partial<ProductRecord>): Promise<ProductRecord> {
+    return await pb.collection('products').create<ProductRecord>(data)
   },
-  async update(id: string, data: FormData | Partial<ProductRecord>) {
-    return pb.collection<ProductRecord>('products').update(id, data)
+
+  async update(id: string, data: Partial<ProductRecord>): Promise<ProductRecord> {
+    return await pb.collection('products').update<ProductRecord>(id, data)
   },
-  async createVariant(data: any) {
-    return pb.collection('product_variants').create(data)
+
+  async createVariant(data: Partial<ProductVariantRecord>): Promise<ProductVariantRecord> {
+    return await pb.collection('product_variants').create<ProductVariantRecord>(data)
   },
-  async updateVariant(id: string, data: any) {
-    return pb.collection('product_variants').update(id, data)
-  },
-  async getCategories(): Promise<CategoryRecord[]> {
-    return pb.collection<CategoryRecord>('categories').getFullList({ sort: 'name' })
-  },
-  async createCategory(name: string, description = '') {
-    return pb.collection('categories').create({ name, description })
+
+  async updateVariant(
+    id: string,
+    data: Partial<ProductVariantRecord>,
+  ): Promise<ProductVariantRecord> {
+    return await pb.collection('product_variants').update<ProductVariantRecord>(id, data)
   },
 }
 
 export const CustomersService = {
-  async getAll(search = '') {
+  async list(search = '', page = 1, perPage = 20) {
     let filter = ''
     if (search.trim()) {
       const q = search.trim()
-      filter = `name ~ "${q}" || phone ~ "${q}" || document ~ "${q}"`
+      filter = `name ~ '${q}' || document ~ '${q}' || phone ~ '${q}' || email ~ '${q}'`
     }
-    return pb.collection<CustomerRecord>('customers').getFullList({
+    return await pb.collection('customers').getList<CustomerRecord>(page, perPage, {
       filter,
       sort: '-created',
     })
   },
-  async getById(id: string) {
-    return pb.collection<CustomerRecord>('customers').getOne(id, {
-      expand: 'created_by',
-    })
-  },
-  async create(data: Partial<CustomerRecord>) {
-    return pb.collection<CustomerRecord>('customers').create(data)
-  },
-  async update(id: string, data: Partial<CustomerRecord>) {
-    return pb.collection<CustomerRecord>('customers').update(id, data)
-  },
-  async checkDuplicate(phone: string, document = '', currentId = '') {
-    const filters: string[] = []
-    if (phone) filters.push(`phone = "${phone}"`)
-    if (document) filters.push(`document = "${document}"`)
-    if (filters.length === 0) return []
 
-    let query = filters.join(' || ')
-    if (currentId) {
-      query = `(${query}) && id != "${currentId}"`
-    }
-    return pb.collection<CustomerRecord>('customers').getFullList({ filter: query })
+  async getById(id: string): Promise<CustomerRecord> {
+    return await pb.collection('customers').getOne<CustomerRecord>(id)
+  },
+
+  async create(data: Partial<CustomerRecord>): Promise<CustomerRecord> {
+    return await pb.collection('customers').create<CustomerRecord>(data)
+  },
+
+  async update(id: string, data: Partial<CustomerRecord>): Promise<CustomerRecord> {
+    return await pb.collection('customers').update<CustomerRecord>(id, data)
   },
 }
 
 export const StockService = {
-  async getStockItems(storeId = '', productId = '') {
-    const filters: string[] = []
-    if (storeId) filters.push(`store = "${storeId}"`)
-    if (productId) filters.push(`product = "${productId}"`)
-
-    return pb.collection('stock_items').getFullList({
-      filter: filters.join(' && '),
+  async listByStore(storeId: string): Promise<StockItemRecord[]> {
+    return await pb.collection('stock_items').getFullList<StockItemRecord>({
+      filter: `store = '${storeId}'`,
       expand: 'product,variant,store',
     })
   },
-  async getLowStockCount() {
-    // Get all stock items and products to check min_stock
-    const [stocks, products] = await Promise.all([
-      pb.collection('stock_items').getFullList(),
-      pb.collection<ProductRecord>('products').getFullList({ filter: "status = 'ativo'" }),
-    ])
-    const prodMap = new Map(products.map((p) => [p.id, p.min_stock || 0]))
 
-    let lowCount = 0
-    for (const item of stocks) {
-      const min = prodMap.get(item.product) || 0
-      if (min > 0 && item.quantity <= min) {
-        lowCount++
-      }
-    }
-    return lowCount
-  },
-  async getMovements(storeId = '', limit = 50) {
-    const filter = storeId ? `store = "${storeId}"` : ''
-    return pb.collection('stock_movements').getList(1, limit, {
+  async listMovements(filter = '', page = 1, perPage = 30) {
+    return await pb.collection('stock_movements').getList<StockMovementRecord>(page, perPage, {
       filter,
-      sort: '-created',
+      sort: '-date,-created',
       expand: 'product,variant,store,user',
     })
   },
-  async recordMovement(data: {
-    type: string
-    product: string
-    variant?: string
-    store: string
-    quantity: number
-    reason?: string
-    source_ref?: string
-    user?: string
-  }) {
-    // Find or create stock_item
-    let filter = `product = "${data.product}" && store = "${data.store}"`
-    if (data.variant) {
-      filter += ` && variant = "${data.variant}"`
-    }
-    const existing = await pb.collection('stock_items').getFullList({ filter })
-    let currentQty = 0
-    let stockItemId = ''
 
-    if (existing.length > 0) {
-      currentQty = existing[0].quantity
-      stockItemId = existing[0].id
-    }
+  async createMovement(data: Partial<StockMovementRecord>): Promise<StockMovementRecord> {
+    return await pb.collection('stock_movements').create<StockMovementRecord>(data)
+  },
 
-    let newQty = currentQty
-    if (['entrada', 'transferencia_recebimento', 'devolucao'].includes(data.type)) {
-      newQty = currentQty + data.quantity
+  async adjustStock(
+    storeId: string,
+    productId: string,
+    variantId: string | undefined,
+    newQuantity: number,
+    userId: string,
+    reason: string,
+  ) {
+    let filter = `store = '${storeId}' && product = '${productId}'`
+    if (variantId) {
+      filter += ` && variant = '${variantId}'`
     } else {
-      // subtraction
-      if (currentQty < data.quantity) {
-        throw new Error(
-          `Estoque insuficiente! Saldo atual: ${currentQty}, solicitado: ${data.quantity}`,
-        )
-      }
-      newQty = currentQty - data.quantity
+      filter += ` && (variant = '' || variant = null)`
     }
 
-    if (stockItemId) {
-      await pb.collection('stock_items').update(stockItemId, { quantity: newQty })
+    const items = await pb.collection('stock_items').getFullList<StockItemRecord>({ filter })
+    let diff = newQuantity
+
+    if (items.length > 0) {
+      const current = items[0].quantity
+      diff = newQuantity - current
+      await pb.collection('stock_items').update(items[0].id, { quantity: newQuantity })
     } else {
       await pb.collection('stock_items').create({
-        product: data.product,
-        variant: data.variant || null,
-        store: data.store,
-        quantity: newQty,
+        store: storeId,
+        product: productId,
+        variant: variantId || null,
+        quantity: newQuantity,
       })
     }
 
-    return pb.collection('stock_movements').create({
-      type: data.type,
-      product: data.product,
-      variant: data.variant || null,
-      store: data.store,
-      quantity: data.quantity,
-      date: new Date().toISOString(),
-      user: data.user || pb.authStore.record?.id,
-      reason: data.reason || '',
-      source_ref: data.source_ref || '',
-    })
+    if (diff !== 0) {
+      await pb.collection('stock_movements').create({
+        store: storeId,
+        product: productId,
+        variant: variantId || null,
+        type: 'ajuste',
+        quantity: diff,
+        date: new Date().toISOString(),
+        user: userId,
+        reason,
+      })
+    }
   },
-  async getTransfers(): Promise<TransferRecord[]> {
-    return pb.collection<TransferRecord>('transfers').getFullList({
-      sort: '-created',
+
+  async listTransfers(page = 1, perPage = 20) {
+    return await pb.collection('transfers').getList<TransferRecord>(page, perPage, {
+      sort: '-date,-created',
       expand: 'origin_store,destination_store,user,received_by',
     })
   },
-  async getTransferItems(transferId: string) {
-    return pb.collection('transfer_items').getFullList({
-      filter: `transfer = "${transferId}"`,
+
+  async getTransferItems(transferId: string): Promise<TransferItemRecord[]> {
+    return await pb.collection('transfer_items').getFullList<TransferItemRecord>({
+      filter: `transfer = '${transferId}'`,
       expand: 'product,variant',
     })
   },
-  async createTransfer(
-    originStore: string,
-    destStore: string,
-    items: Array<{ product: string; variant?: string; quantity: number }>,
-    note = '',
-  ) {
-    if (originStore === destStore) {
-      throw new Error('A loja de origem não pode ser igual à loja de destino.')
-    }
-    // Verify availability first
-    for (const item of items) {
-      let filter = `product = "${item.product}" && store = "${originStore}"`
-      if (item.variant) filter += ` && variant = "${item.variant}"`
-      const stocks = await pb.collection('stock_items').getFullList({ filter })
-      const current = stocks.length > 0 ? stocks[0].quantity : 0
-      if (current < item.quantity) {
-        throw new Error(`Estoque insuficiente para transferência na loja de origem.`)
-      }
-    }
 
-    // 1. Create transfer record
-    const transfer = await pb.collection('transfers').create({
-      origin_store: originStore,
-      destination_store: destStore,
+  async createTransfer(
+    data: {
+      origin_store: string
+      destination_store: string
+      user: string
+      note?: string
+    },
+    items: Array<{
+      product: string
+      variant?: string
+      quantity: number
+    }>,
+  ) {
+    const transfer = await pb.collection('transfers').create<TransferRecord>({
+      ...data,
       status: 'em_transito',
-      user: pb.authStore.record?.id,
       date: new Date().toISOString(),
-      note,
     })
 
-    // 2. Subtract from origin and create transfer_items
     for (const item of items) {
       await pb.collection('transfer_items').create({
         transfer: transfer.id,
@@ -251,386 +219,876 @@ export const StockService = {
         quantity: item.quantity,
       })
 
-      await this.recordMovement({
-        type: 'transferencia_envio',
+      let filter = `store = '${data.origin_store}' && product = '${item.product}'`
+      if (item.variant) {
+        filter += ` && variant = '${item.variant}'`
+      } else {
+        filter += ` && (variant = '' || variant = null)`
+      }
+
+      const existing = await pb.collection('stock_items').getFullList<StockItemRecord>({ filter })
+      if (existing.length > 0) {
+        const newQty = Math.max(0, existing[0].quantity - item.quantity)
+        await pb.collection('stock_items').update(existing[0].id, { quantity: newQty })
+      }
+
+      await pb.collection('stock_movements').create({
+        store: data.origin_store,
         product: item.product,
-        variant: item.variant,
-        store: originStore,
-        quantity: item.quantity,
-        reason: `Envio transferência #${transfer.id}`,
+        variant: item.variant || null,
+        type: 'transferencia_envio',
+        quantity: -item.quantity,
+        date: new Date().toISOString(),
+        user: data.user,
+        reason: `Transferência #${transfer.id.slice(0, 8)} para outra unidade`,
         source_ref: transfer.id,
       })
     }
 
     return transfer
   },
-  async receiveTransfer(transferId: string) {
-    const transfer = await pb.collection('transfers').getOne(transferId)
+
+  async receiveTransfer(transferId: string, receivedByUserId: string) {
+    const transfer = await pb.collection('transfers').getOne<TransferRecord>(transferId)
     if (transfer.status !== 'em_transito') {
-      throw new Error('Apenas transferências "em trânsito" podem ser recebidas.')
+      throw new Error('Transferência não está em trânsito')
     }
-    const items = await pb
-      .collection('transfer_items')
-      .getFullList({ filter: `transfer = "${transferId}"` })
+
+    const items = await this.getTransferItems(transferId)
 
     for (const item of items) {
-      await this.recordMovement({
-        type: 'transferencia_recebimento',
-        product: item.product,
-        variant: item.variant,
+      let filter = `store = '${transfer.destination_store}' && product = '${item.product}'`
+      if (item.variant) {
+        filter += ` && variant = '${item.variant}'`
+      } else {
+        filter += ` && (variant = '' || variant = null)`
+      }
+
+      const existing = await pb.collection('stock_items').getFullList<StockItemRecord>({ filter })
+      if (existing.length > 0) {
+        await pb.collection('stock_items').update(existing[0].id, {
+          quantity: existing[0].quantity + item.quantity,
+        })
+      } else {
+        await pb.collection('stock_items').create({
+          store: transfer.destination_store,
+          product: item.product,
+          variant: item.variant || null,
+          quantity: item.quantity,
+        })
+      }
+
+      await pb.collection('stock_movements').create({
         store: transfer.destination_store,
-        quantity: item.quantity,
-        reason: `Recebimento transferência #${transfer.id}`,
-        source_ref: transfer.id,
-      })
-    }
-
-    return pb.collection('transfers').update(transferId, {
-      status: 'recebida',
-      received_by: pb.authStore.record?.id,
-      received_at: new Date().toISOString(),
-    })
-  },
-  async cancelTransfer(transferId: string) {
-    const transfer = await pb.collection('transfers').getOne(transferId)
-    if (transfer.status !== 'em_transito') {
-      throw new Error('Apenas transferências "em trânsito" podem ser canceladas.')
-    }
-    const items = await pb
-      .collection('transfer_items')
-      .getFullList({ filter: `transfer = "${transferId}"` })
-
-    // Return stock to origin
-    for (const item of items) {
-      await this.recordMovement({
-        type: 'entrada',
         product: item.product,
-        variant: item.variant,
-        store: transfer.origin_store,
+        variant: item.variant || null,
+        type: 'transferencia_recebimento',
         quantity: item.quantity,
-        reason: `Cancelamento de envio de transferência #${transfer.id}`,
+        date: new Date().toISOString(),
+        user: receivedByUserId,
+        reason: `Recebimento Transferência #${transfer.id.slice(0, 8)}`,
         source_ref: transfer.id,
       })
     }
 
-    return pb.collection('transfers').update(transferId, {
-      status: 'cancelada',
+    return await pb.collection('transfers').update<TransferRecord>(transferId, {
+      status: 'recebida',
+      received_by: receivedByUserId,
+      received_at: new Date().toISOString(),
     })
   },
 }
 
 export const SettingsService = {
+  async get(key: string, defaultValue = ''): Promise<string> {
+    try {
+      const rec = await pb.collection('settings').getFirstListItem<SettingRecord>(`key = '${key}'`)
+      return rec.value
+    } catch {
+      return defaultValue
+    }
+  },
+
+  async set(key: string, value: string): Promise<SettingRecord> {
+    try {
+      const rec = await pb.collection('settings').getFirstListItem<SettingRecord>(`key = '${key}'`)
+      return await pb.collection('settings').update<SettingRecord>(rec.id, { value })
+    } catch {
+      return await pb.collection('settings').create<SettingRecord>({ key, value })
+    }
+  },
+
   async getAll(): Promise<Record<string, string>> {
-    const list = await pb.collection<SettingRecord>('settings').getFullList()
+    const list = await pb.collection('settings').getFullList<SettingRecord>()
     const map: Record<string, string> = {}
     for (const item of list) {
       map[item.key] = item.value
     }
     return map
   },
-  async set(key: string, value: string) {
-    try {
-      const existing = await pb
-        .collection<SettingRecord>('settings')
-        .getFirstListItem(`key = "${key}"`)
-      return pb.collection<SettingRecord>('settings').update(existing.id, { value })
-    } catch {
-      return pb.collection<SettingRecord>('settings').create({ key, value })
-    }
-  },
 }
 
 export const SalesService = {
-  async getAll(filter = '', sort = '-created') {
-    return pb.collection<SaleRecord>('sales').getFullList({
+  async list(filter = '', page = 1, perPage = 20) {
+    return await pb.collection('sales').getList<SaleRecord>(page, perPage, {
       filter,
-      sort,
-      expand: 'customer,store,seller',
+      sort: '-created',
+      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
     })
   },
-  async getById(id: string) {
-    return pb.collection<SaleRecord>('sales').getOne(id, {
-      expand: 'customer,store,seller',
+
+  async getById(id: string): Promise<SaleRecord> {
+    return await pb.collection('sales').getOne<SaleRecord>(id, {
+      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
     })
   },
-  async getItems(saleId: string) {
-    return pb.collection('sale_items').getFullList({
-      filter: `sale = "${saleId}"`,
+
+  async getItems(saleId: string): Promise<SaleItemRecord[]> {
+    return await pb.collection('sale_items').getFullList<SaleItemRecord>({
+      filter: `sale = '${saleId}'`,
     })
   },
-  async getPayments(saleId: string) {
-    return pb.collection('sale_payments').getFullList({
-      filter: `sale = "${saleId}"`,
+
+  async getPayments(saleId: string): Promise<SalePaymentRecord[]> {
+    return await pb.collection('sale_payments').getFullList<SalePaymentRecord>({
+      filter: `sale = '${saleId}'`,
+      expand: 'financial_account',
     })
   },
-  async getDocuments(saleId: string) {
-    return pb.collection('sale_documents').getFullList({
-      filter: `sale = "${saleId}"`,
+
+  async getDocuments(saleId: string): Promise<SaleDocumentRecord[]> {
+    return await pb.collection('sale_documents').getFullList<SaleDocumentRecord>({
+      filter: `sale = '${saleId}'`,
+      sort: '-created',
       expand: 'uploaded_by',
     })
   },
-  async createSale(data: {
-    customer: string
-    store: string
-    seller: string
-    items: Array<{
-      product: string
-      variant?: string
-      product_name: string
-      sku: string
-      sale_price: number
-      cost_price?: number
-      quantity: number
-      discount: number
-      discount_rule?: string
-      total: number
-      serial_number?: string
-    }>
-    subtotal: number
-    total_discount: number
-    total: number
-    payment: 'pix' | 'dinheiro' | 'cartao_credito'
-    allow_installments?: boolean
-    installments?: number
-    observation?: string
-    isDraft?: boolean
-  }) {
-    // 1. Generate unique sale number: NWE-YYYYMMDD-XXXX
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000)
-    const saleNumber = `NWE-${dateStr}-${randomSuffix}`
 
-    // 2. If confirming (not draft), revalidate stock availability for each item in the specified store
-    if (!data.isDraft) {
-      for (const item of data.items) {
-        let filter = `product = "${item.product}" && store = "${data.store}"`
-        if (item.variant) filter += ` && variant = "${item.variant}"`
-        const stocks = await pb.collection('stock_items').getFullList({ filter })
-        const available = stocks.length > 0 ? stocks[0].quantity : 0
-        if (available < item.quantity) {
-          throw new Error(
-            `Estoque insuficiente para o produto "${item.product_name}". Disponível na loja: ${available}, solicitado: ${item.quantity}.`,
-          )
-        }
-      }
+  async uploadDocument(
+    saleId: string,
+    file: File,
+    label: string,
+    docType:
+      | 'nota_fiscal'
+      | 'comprovante_pagamento'
+      | 'recibo_entrega'
+      | 'termo_garantia'
+      | 'outro' = 'nota_fiscal',
+  ): Promise<SaleDocumentRecord> {
+    const formData = new FormData()
+    formData.append('sale', saleId)
+    formData.append('file', file)
+    formData.append('label', label)
+    formData.append('doc_type', docType)
+    formData.append('file_size', String(file.size))
+    if (pb.authStore.record?.id) {
+      formData.append('uploaded_by', pb.authStore.record.id)
     }
 
-    // 3. Create Sale Record
-    const saleStatus = data.isDraft ? 'rascunho' : 'confirmada'
-    const sale = await pb.collection<SaleRecord>('sales').create({
-      number: saleNumber,
-      customer: data.customer,
-      store: data.store,
-      seller: data.seller,
-      status: saleStatus,
-      subtotal: data.subtotal,
-      total_discount: data.total_discount,
-      total: data.total,
-      payment: data.payment,
-      allow_installments: data.allow_installments || false,
-      installments: data.installments || 1,
-      observation: data.observation || '',
+    return await pb.collection('sale_documents').create<SaleDocumentRecord>(formData)
+  },
+
+  async deleteDocument(docId: string): Promise<boolean> {
+    return await pb.collection('sale_documents').delete(docId)
+  },
+
+  async generateNextNumber(): Promise<string> {
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const prefix = `VEN-${yyyy}${mm}-`
+
+    const lastSales = await pb.collection('sales').getList<SaleRecord>(1, 1, {
+      filter: `number ~ '${prefix}'`,
+      sort: '-number',
     })
 
-    // 4. Create Sale Items snapshots
-    for (const item of data.items) {
+    if (lastSales.items.length === 0) {
+      return `${prefix}0001`
+    }
+
+    const lastNum = lastSales.items[0].number
+    const sequencePart = parseInt(lastNum.replace(prefix, ''), 10) || 0
+    return `${prefix}${String(sequencePart + 1).padStart(4, '0')}`
+  },
+
+  async createDraftSale(
+    saleData: Partial<SaleRecord>,
+    items: Array<Partial<SaleItemRecord>>,
+    payments: Array<Partial<SalePaymentRecord>>,
+  ): Promise<SaleRecord> {
+    const number = await this.generateNextNumber()
+    const sale = await pb.collection('sales').create<SaleRecord>({
+      ...saleData,
+      number,
+      status: 'rascunho',
+      delivery_status: 'pendente',
+    })
+
+    for (const item of items) {
       await pb.collection('sale_items').create({
+        ...item,
         sale: sale.id,
-        product: item.product,
-        variant: item.variant || null,
-        product_name: item.product_name,
-        sku: item.sku,
-        sale_price: item.sale_price,
-        cost_price: item.cost_price || 0,
-        quantity: item.quantity,
-        discount: item.discount,
-        discount_rule: item.discount_rule || '',
-        total: item.total,
-        serial_number: item.serial_number || '',
       })
-
-      // 5. If confirmed, register stock movement: saida_venda
-      if (!data.isDraft) {
-        await StockService.recordMovement({
-          type: 'saida_venda',
-          product: item.product,
-          variant: item.variant,
-          store: data.store,
-          quantity: item.quantity,
-          reason: `Venda ${saleNumber}`,
-          source_ref: sale.id,
-          user: data.seller,
-        })
-      }
     }
 
-    // 6. Record payment
-    await pb.collection('sale_payments').create({
-      sale: sale.id,
-      method: data.payment,
-      amount: data.total,
-      confirmed: !data.isDraft,
-      installments: data.installments || 1,
-    })
-
-    // 7. If confirmed, record payment ledger & calculate commission
-    if (!data.isDraft) {
-      await pb.collection('payments').create({
+    for (const p of payments) {
+      await pb.collection('sale_payments').create({
+        ...p,
         sale: sale.id,
-        customer: data.customer,
-        store: data.store,
-        method: data.payment,
-        amount: data.total,
-        status: 'pago',
+        confirmed: false,
       })
-
-      // Commission calculation
-      await CommissionsService.calculateAndCreateForSale(
-        sale.id,
-        data.seller,
-        data.store,
-        data.total,
-      )
     }
 
     return sale
   },
 
-  async cancelOrReturnSale(saleId: string, action: 'cancelada' | 'devolvida', reason = '') {
-    const sale = await pb.collection<SaleRecord>('sales').getOne(saleId)
-    if (sale.status === action) return
+  async confirmSale(saleId: string) {
+    // Calls our atomic server endpoint which enforces:
+    // - transaction consistency
+    // - monthly closed period check
+    // - exact payment coverage or admin authorization
+    // - concurrency check on stock
+    // - stock decrements and movements
+    // - commission calculation item by item
+    // - audit logging
+    const res = await pb.send<{ success: boolean; saleId: string; number: string }>(
+      '/backend/v1/nwe/confirm-sale',
+      {
+        method: 'POST',
+        body: { saleId },
+      },
+    )
+    return res
+  },
 
-    const items = await pb.collection('sale_items').getFullList({ filter: `sale = "${saleId}"` })
+  async registerDelivery(saleId: string, deliveredByUserId: string) {
+    const sale = await pb.collection('sales').getOne<SaleRecord>(saleId)
+    if (sale.status !== 'confirmada') {
+      throw new Error('Apenas vendas confirmadas podem ser marcadas como entregues.')
+    }
+    if (sale.delivery_status === 'entregue') {
+      throw new Error('Esta venda já foi entregue anteriormente.')
+    }
 
-    // If devolution, return items to origin store stock
-    if (action === 'devolvida') {
-      for (const it of items) {
-        if (it.product) {
-          await StockService.recordMovement({
-            type: 'devolucao',
-            product: it.product,
-            variant: it.variant,
-            store: sale.store,
-            quantity: it.quantity,
-            reason: `Devolução da Venda ${sale.number} - Motivo: ${reason}`,
-            source_ref: sale.id,
+    // Notice: Delivery DOES NOT generate another stock decrement. Stock is decremented on confirmation only.
+    const updated = await pb.collection('sales').update<SaleRecord>(saleId, {
+      delivery_status: 'entregue',
+      delivered_at: new Date().toISOString(),
+      delivered_by: deliveredByUserId,
+    })
+
+    // Audit log
+    await pb.collection('audit_logs').create({
+      entity: 'sales',
+      record_id: saleId,
+      action: 'alteracao',
+      user: deliveredByUserId,
+      reason: 'Registro de entrega do produto ao cliente',
+      new_values: { delivery_status: 'entregue', delivered_at: new Date().toISOString() },
+    })
+
+    return updated
+  },
+
+  async cancelSale(saleId: string, reason: string, adminUserId: string) {
+    const sale = await pb.collection('sales').getOne<SaleRecord>(saleId)
+    if (sale.status === 'cancelada') {
+      throw new Error('Esta venda já está cancelada.')
+    }
+
+    const items = await pb.collection('sale_items').getFullList<SaleItemRecord>({
+      filter: `sale = '${saleId}'`,
+    })
+
+    // If sale was confirmed and NOT delivered yet, return stock once
+    if (sale.status === 'confirmada' && sale.delivery_status !== 'entregue') {
+      for (const item of items) {
+        if (!item.product) continue
+        let stockFilter = `store = '${sale.store}' && product = '${item.product}'`
+        if (item.variant) {
+          stockFilter += ` && variant = '${item.variant}'`
+        } else {
+          stockFilter += ` && (variant = '' || variant = null)`
+        }
+        const existingStock = await pb.collection('stock_items').getFullList<StockItemRecord>({
+          filter: stockFilter,
+        })
+        if (existingStock.length > 0) {
+          await pb.collection('stock_items').update(existingStock[0].id, {
+            quantity: existingStock[0].quantity + item.quantity,
           })
+        }
+        await pb.collection('stock_movements').create({
+          store: sale.store,
+          product: item.product,
+          variant: item.variant || null,
+          type: 'devolucao',
+          quantity: item.quantity,
+          date: new Date().toISOString(),
+          user: adminUserId,
+          reason: `Cancelamento de venda #${sale.number} (antes da entrega)`,
+          source_ref: saleId,
+        })
+      }
+    }
+
+    // Cancel / reverse commissions
+    const comms = await pb.collection('commissions').getFullList<CommissionRecord>({
+      filter: `sale = '${saleId}'`,
+    })
+    for (const c of comms) {
+      await pb.collection('commissions').update(c.id, {
+        status: 'estornada',
+        notes: `Estorno automático por cancelamento da venda #${sale.number}. Motivo: ${reason}`,
+      })
+    }
+
+    // Update sale record
+    const updated = await pb.collection('sales').update<SaleRecord>(saleId, {
+      status: 'cancelada',
+      cancellation_reason: reason,
+      canceled_by: adminUserId,
+      canceled_at: new Date().toISOString(),
+    })
+
+    // Register sale_returns record
+    await pb.collection('sale_returns').create({
+      sale: saleId,
+      store: sale.store,
+      type: 'cancelamento',
+      reason,
+      refund_amount: sale.total,
+      refund_status: 'sem_reembolso',
+      product_condition:
+        sale.delivery_status === 'entregue' ? 'avariado_indisponivel' : 'nao_entregue_liberado',
+      performed_by: adminUserId,
+    })
+
+    // Audit log
+    await pb.collection('audit_logs').create({
+      entity: 'sales',
+      record_id: saleId,
+      action: 'cancelamento',
+      user: adminUserId,
+      reason,
+      previous_values: { status: sale.status },
+      new_values: { status: 'cancelada', cancellation_reason: reason },
+    })
+
+    return updated
+  },
+
+  async registerReturn(
+    saleId: string,
+    data: {
+      type: 'devolucao_total' | 'devolucao_parcial'
+      reason: string
+      refund_amount: number
+      refund_status: 'pendente' | 'reembolsado' | 'sem_reembolso'
+      refund_date?: string
+      refund_method?: 'pix' | 'dinheiro' | 'estorno_cartao'
+      refund_account?: string
+      product_condition:
+        | 'perfeito_retorna_venda'
+        | 'avariado_indisponivel'
+        | 'nao_entregue_liberado'
+      performed_by: string
+      items: Array<{
+        sale_item_id: string
+        product_id: string
+        variant_id?: string
+        product_name: string
+        quantity: number
+        unit_price: number
+        cost_price: number
+        condition: string
+      }>
+    },
+  ) {
+    const sale = await pb.collection('sales').getOne<SaleRecord>(saleId)
+
+    // Create sale_return record
+    const returnRec = await pb.collection('sale_returns').create<SaleReturnRecord>({
+      sale: saleId,
+      store: sale.store,
+      type: data.type,
+      reason: data.reason,
+      refund_amount: data.refund_amount,
+      refund_status: data.refund_status,
+      refund_date: data.refund_date || new Date().toISOString(),
+      refund_method: data.refund_method,
+      refund_account: data.refund_account,
+      product_condition: data.product_condition,
+      performed_by: data.performed_by,
+      items_detail: data.items,
+    })
+
+    // Return stock ONLY IF condition is 'perfeito_retorna_venda' or 'nao_entregue_liberado'
+    // If 'avariado_indisponivel', it stays unavailable for sale until administrative decision
+    if (
+      data.product_condition === 'perfeito_retorna_venda' ||
+      data.product_condition === 'nao_entregue_liberado'
+    ) {
+      for (const it of data.items) {
+        if (!it.product_id) continue
+        let stockFilter = `store = '${sale.store}' && product = '${it.product_id}'`
+        if (it.variant_id) {
+          stockFilter += ` && variant = '${it.variant_id}'`
+        } else {
+          stockFilter += ` && (variant = '' || variant = null)`
+        }
+        const existingStock = await pb.collection('stock_items').getFullList<StockItemRecord>({
+          filter: stockFilter,
+        })
+        if (existingStock.length > 0) {
+          await pb.collection('stock_items').update(existingStock[0].id, {
+            quantity: existingStock[0].quantity + it.quantity,
+          })
+        }
+        await pb.collection('stock_movements').create({
+          store: sale.store,
+          product: it.product_id,
+          variant: it.variant_id || null,
+          type: 'devolucao',
+          quantity: it.quantity,
+          date: new Date().toISOString(),
+          user: data.performed_by,
+          reason: `Devolução venda #${sale.number} - Condição: ${data.product_condition}`,
+          source_ref: returnRec.id,
+        })
+      }
+    } else {
+      // Record movement as avaria
+      for (const it of data.items) {
+        if (!it.product_id) continue
+        await pb.collection('stock_movements').create({
+          store: sale.store,
+          product: it.product_id,
+          variant: it.variant_id || null,
+          type: 'avaria',
+          quantity: it.quantity,
+          date: new Date().toISOString(),
+          user: data.performed_by,
+          reason: `Produto avariado retornado na devolução #${sale.number} (indisponível para venda)`,
+          source_ref: returnRec.id,
+        })
+      }
+    }
+
+    // Update returned_quantity in sale_items
+    for (const it of data.items) {
+      if (it.sale_item_id) {
+        try {
+          const sItem = await pb.collection('sale_items').getOne<SaleItemRecord>(it.sale_item_id)
+          await pb.collection('sale_items').update(it.sale_item_id, {
+            returned_quantity: (sItem.returned_quantity || 0) + it.quantity,
+          })
+        } catch {
+          /* intentionally ignored */
         }
       }
     }
 
-    // Update sale status
-    await pb.collection('sales').update(saleId, { status: action })
-
-    // If commissions were created, mark them as canceled/void
-    const commissions = await pb
-      .collection('commissions')
-      .getFullList({ filter: `sale = "${saleId}"` })
-    for (const c of commissions) {
-      await pb.collection('commissions').delete(c.id)
+    // Proportional commission adjustment
+    const comms = await pb.collection('commissions').getFullList<CommissionRecord>({
+      filter: `sale = '${saleId}'`,
+    })
+    for (const c of comms) {
+      if (data.type === 'devolucao_total') {
+        await pb.collection('commissions').update(c.id, {
+          status: 'estornada',
+          notes: `Estornada por devolução total #${sale.number}. Ajuste de R$ ${c.value.toFixed(2)}`,
+        })
+      } else {
+        const proportion = sale.total > 0 ? (sale.total - data.refund_amount) / sale.total : 0
+        const adjustedVal = Math.max(0, c.value * proportion)
+        await pb.collection('commissions').update(c.id, {
+          value: adjustedVal,
+          notes: `Ajuste parcial por devolução. Valor anterior: R$ ${c.value.toFixed(2)}, novo: R$ ${adjustedVal.toFixed(2)}`,
+        })
+      }
     }
+
+    // If refund was processed via a financial account, create a financial_transaction (reembolso)
+    if (data.refund_status === 'reembolsado' && data.refund_amount > 0) {
+      await pb.collection('financial_transactions').create({
+        description: `Reembolso devolução Venda #${sale.number}`,
+        type: 'reembolso',
+        store: sale.store,
+        account: data.refund_account || null,
+        amount: data.refund_amount,
+        competence_date: data.refund_date || new Date().toISOString(),
+        due_date: data.refund_date || new Date().toISOString(),
+        payment_date: data.refund_date || new Date().toISOString(),
+        status: 'pago',
+        paid_amount: data.refund_amount,
+        payment_method: data.refund_method || 'pix',
+        recipient_supplier: `Cliente da Venda #${sale.number}`,
+        sale: saleId,
+        notes: data.reason,
+        created_by: data.performed_by,
+      })
+
+      // Update account current balance if account provided
+      if (data.refund_account) {
+        try {
+          const acc = await pb
+            .collection('financial_accounts')
+            .getOne<FinancialAccountRecord>(data.refund_account)
+          await pb.collection('financial_accounts').update(data.refund_account, {
+            current_balance: acc.current_balance - data.refund_amount,
+          })
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+    }
+
+    // Audit log
+    await pb.collection('audit_logs').create({
+      entity: 'sales',
+      record_id: saleId,
+      action: 'devolucao',
+      user: data.performed_by,
+      reason: data.reason,
+      new_values: { return_id: returnRec.id, refund_amount: data.refund_amount, type: data.type },
+    })
+
+    return returnRec
   },
 }
 
 export const CommissionsService = {
-  async getRules() {
-    return pb.collection<CommissionRuleRecord>('commission_rules').getFullList({ sort: '-rate' })
-  },
-  async createRule(data: Partial<CommissionRuleRecord>) {
-    return pb.collection('commission_rules').create(data)
-  },
-  async updateRule(id: string, data: Partial<CommissionRuleRecord>) {
-    return pb.collection('commission_rules').update(id, data)
-  },
-  async deleteRule(id: string) {
-    return pb.collection('commission_rules').delete(id)
-  },
-  async calculateAndCreateForSale(
-    saleId: string,
-    sellerId: string,
-    storeId: string,
-    saleTotal: number,
-  ) {
-    // Check if seller has cs_available !== false
-    try {
-      const seller = await pb.collection('users').getOne(sellerId)
-      if (seller.cs_available === false) {
-        return // Seller disabled for commissions
-      }
-    } catch {
-      // ignore
-    }
-
-    // Look for matching rule (store specific first, or general)
-    const rules = await pb.collection<CommissionRuleRecord>('commission_rules').getFullList({
-      filter: 'active = true',
-      sort: '-rate',
-    })
-
-    let matchedRule = rules.find(
-      (r) => r.store === storeId && (!r.min_sale_amount || saleTotal >= r.min_sale_amount),
-    )
-    if (!matchedRule) {
-      matchedRule = rules.find(
-        (r) => !r.store && (!r.min_sale_amount || saleTotal >= r.min_sale_amount),
-      )
-    }
-
-    const rate = matchedRule ? matchedRule.rate : 0
-    const value = (saleTotal * rate) / 100
-
-    if (value > 0 || rate > 0) {
-      await pb.collection('commissions').create({
-        seller: sellerId,
-        sale: saleId,
-        store: storeId,
-        base_amount: saleTotal,
-        rate: rate,
-        value: value,
-        status: 'pendente',
-      })
-    }
-  },
-  async getAll(sellerId = '', storeId = ''): Promise<CommissionRecord[]> {
-    const filters: string[] = []
-    if (sellerId) filters.push(`seller = "${sellerId}"`)
-    if (storeId) filters.push(`store = "${storeId}"`)
-    return pb.collection<CommissionRecord>('commissions').getFullList({
-      filter: filters.join(' && '),
+  async list(filter = '', page = 1, perPage = 30) {
+    return await pb.collection('commissions').getList<CommissionRecord>(page, perPage, {
+      filter,
       sort: '-created',
       expand: 'seller,sale,store',
     })
   },
-  async markAsPaid(id: string) {
-    return pb.collection('commissions').update(id, { status: 'paga' })
+
+  async updateStatus(
+    id: string,
+    status: CommissionStatus,
+    notes?: string,
+  ): Promise<CommissionRecord> {
+    const updateData: Partial<CommissionRecord> = { status }
+    if (notes) updateData.notes = notes
+    if (status === 'liberada') updateData.released_at = new Date().toISOString()
+    if (status === 'paga') updateData.paid_at = new Date().toISOString()
+    return await pb.collection('commissions').update<CommissionRecord>(id, updateData)
+  },
+
+  async payCommission(
+    commissionId: string,
+    accountId: string,
+    paymentMethod: string,
+    adminUserId: string,
+  ) {
+    const comm = await pb.collection('commissions').getOne<CommissionRecord>(commissionId, {
+      expand: 'seller,sale',
+    })
+
+    if (comm.status === 'paga') {
+      throw new Error('Esta comissão já está marcada como paga.')
+    }
+
+    // Update commission to 'paga'
+    const updatedComm = await pb.collection('commissions').update<CommissionRecord>(commissionId, {
+      status: 'paga',
+      paid_at: new Date().toISOString(),
+    })
+
+    // Register financial transaction linked to commission and origin sale
+    await pb.collection('financial_transactions').create({
+      description: `Pagamento de comissão - ${comm.expand?.seller?.name || 'Vendedor'} (Venda #${comm.expand?.sale?.number || ''})`,
+      type: 'despesa',
+      store: comm.store,
+      account: accountId,
+      amount: comm.value,
+      competence_date: comm.competence_date || comm.created,
+      due_date: new Date().toISOString(),
+      payment_date: new Date().toISOString(),
+      status: 'pago',
+      paid_amount: comm.value,
+      payment_method: paymentMethod as any,
+      recipient_supplier: comm.expand?.seller?.name,
+      sale: comm.sale,
+      commission: commissionId,
+      created_by: adminUserId,
+    })
+
+    // Update account balance
+    if (accountId) {
+      try {
+        const acc = await pb
+          .collection('financial_accounts')
+          .getOne<FinancialAccountRecord>(accountId)
+        await pb.collection('financial_accounts').update(accountId, {
+          current_balance: acc.current_balance - comm.value,
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+
+    // Audit log
+    await pb.collection('audit_logs').create({
+      entity: 'commissions',
+      record_id: commissionId,
+      action: 'alteracao',
+      user: adminUserId,
+      reason: `Pagamento de comissão no valor de R$ ${comm.value.toFixed(2)}`,
+      previous_values: { status: comm.status },
+      new_values: { status: 'paga', paid_at: new Date().toISOString(), account: accountId },
+    })
+
+    return updatedComm
   },
 }
 
 export const FinancialService = {
-  async getExpenses(storeId = '', startDate = '', endDate = ''): Promise<ExpenseRecord[]> {
-    const filters: string[] = []
-    if (storeId) filters.push(`store = "${storeId}"`)
-    if (startDate) filters.push(`date >= "${startDate}"`)
-    if (endDate) filters.push(`date <= "${endDate}"`)
-
-    return pb.collection<ExpenseRecord>('expenses').getFullList({
-      filter: filters.join(' && '),
-      sort: '-date',
-      expand: 'store,created_by',
+  // Accounts
+  async listAccounts(): Promise<FinancialAccountRecord[]> {
+    return await pb.collection('financial_accounts').getFullList<FinancialAccountRecord>({
+      sort: 'name',
+      expand: 'store',
     })
   },
-  async createExpense(data: any) {
-    return pb.collection('expenses').create(data)
+
+  async createAccount(data: Partial<FinancialAccountRecord>): Promise<FinancialAccountRecord> {
+    return await pb.collection('financial_accounts').create<FinancialAccountRecord>({
+      ...data,
+      current_balance: data.initial_balance || 0,
+    })
   },
-  async deleteExpense(id: string) {
-    return pb.collection('expenses').delete(id)
+
+  async updateAccount(
+    id: string,
+    data: Partial<FinancialAccountRecord>,
+  ): Promise<FinancialAccountRecord> {
+    return await pb.collection('financial_accounts').update<FinancialAccountRecord>(id, data)
   },
-  async getPayments(storeId = ''): Promise<PaymentLedgerRecord[]> {
-    const filter = storeId ? `store = "${storeId}"` : ''
-    return pb.collection<PaymentLedgerRecord>('payments').getFullList({
+
+  // Categories
+  async listCategories(): Promise<FinancialCategoryRecord[]> {
+    return await pb.collection('financial_categories').getFullList<FinancialCategoryRecord>({
+      sort: 'group,name,subcategory',
+    })
+  },
+
+  async createCategory(data: Partial<FinancialCategoryRecord>): Promise<FinancialCategoryRecord> {
+    return await pb.collection('financial_categories').create<FinancialCategoryRecord>(data)
+  },
+
+  // Transactions
+  async listTransactions(filter = '', page = 1, perPage = 30) {
+    return await pb
+      .collection('financial_transactions')
+      .getList<FinancialTransactionRecord>(page, perPage, {
+        filter,
+        sort: '-due_date,-created',
+        expand: 'category,store,account,destination_account,sale,commission,created_by',
+      })
+  },
+
+  async createTransaction(
+    data: Partial<FinancialTransactionRecord>,
+  ): Promise<FinancialTransactionRecord> {
+    return await pb.collection('financial_transactions').create<FinancialTransactionRecord>(data)
+  },
+
+  async updateTransaction(
+    id: string,
+    data: Partial<FinancialTransactionRecord>,
+  ): Promise<FinancialTransactionRecord> {
+    return await pb
+      .collection('financial_transactions')
+      .update<FinancialTransactionRecord>(id, data)
+  },
+
+  async transferBetweenAccounts(
+    sourceAccountId: string,
+    destAccountId: string,
+    amount: number,
+    date: string,
+    description: string,
+    userId: string,
+  ) {
+    const source = await pb
+      .collection('financial_accounts')
+      .getOne<FinancialAccountRecord>(sourceAccountId)
+    const dest = await pb
+      .collection('financial_accounts')
+      .getOne<FinancialAccountRecord>(destAccountId)
+
+    // Note: transfers between own accounts are NOT revenue or expense
+    const trans = await pb.collection('financial_transactions').create<FinancialTransactionRecord>({
+      description: description || `Transferência entre contas: ${source.name} -> ${dest.name}`,
+      type: 'transferencia_entre_contas',
+      account: sourceAccountId,
+      destination_account: destAccountId,
+      amount,
+      competence_date: date,
+      due_date: date,
+      payment_date: date,
+      status: 'pago',
+      paid_amount: amount,
+      payment_method: 'transferencia',
+      created_by: userId,
+    })
+
+    // Update balances
+    await pb.collection('financial_accounts').update(sourceAccountId, {
+      current_balance: source.current_balance - amount,
+    })
+    await pb.collection('financial_accounts').update(destAccountId, {
+      current_balance: dest.current_balance + amount,
+    })
+
+    return trans
+  },
+
+  // Card Receivables
+  async listCardReceivables(filter = '', page = 1, perPage = 30) {
+    return await pb.collection('card_receivables').getList<CardReceivableRecord>(page, perPage, {
+      filter,
+      sort: 'expected_liquidation_date',
+      expand: 'sale,store,target_account',
+    })
+  },
+
+  async liquidateCardReceivable(id: string, targetAccountId: string, actualDate: string) {
+    const rec = await pb.collection('card_receivables').getOne<CardReceivableRecord>(id)
+    const updated = await pb.collection('card_receivables').update<CardReceivableRecord>(id, {
+      status: 'liquidado',
+      target_account: targetAccountId,
+      actual_liquidation_date: actualDate,
+    })
+
+    // Update account balance with net amount
+    if (targetAccountId) {
+      try {
+        const acc = await pb
+          .collection('financial_accounts')
+          .getOne<FinancialAccountRecord>(targetAccountId)
+        await pb.collection('financial_accounts').update(targetAccountId, {
+          current_balance: acc.current_balance + rec.net_amount,
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+
+    return updated
+  },
+
+  // Recurring Expenses
+  async listRecurringExpenses(): Promise<RecurringExpenseRecord[]> {
+    return await pb.collection('recurring_expenses').getFullList<RecurringExpenseRecord>({
+      sort: 'description',
+      expand: 'category,store,preferred_account',
+    })
+  },
+
+  async createRecurringExpense(
+    data: Partial<RecurringExpenseRecord>,
+  ): Promise<RecurringExpenseRecord> {
+    return await pb.collection('recurring_expenses').create<RecurringExpenseRecord>(data)
+  },
+
+  async updateRecurringExpense(
+    id: string,
+    data: Partial<RecurringExpenseRecord>,
+  ): Promise<RecurringExpenseRecord> {
+    return await pb.collection('recurring_expenses').update<RecurringExpenseRecord>(id, data)
+  },
+
+  // Allocations (Rateios)
+  async listAllocations(): Promise<ExpenseAllocationRecord[]> {
+    return await pb.collection('expense_allocations').getFullList<ExpenseAllocationRecord>({
+      sort: 'name',
+      expand: 'store',
+    })
+  },
+
+  async updateAllocation(
+    id: string,
+    data: Partial<ExpenseAllocationRecord>,
+  ): Promise<ExpenseAllocationRecord> {
+    return await pb.collection('expense_allocations').update<ExpenseAllocationRecord>(id, data)
+  },
+
+  // Monthly Closings
+  async listClosings(year?: number): Promise<MonthlyClosingRecord[]> {
+    const filter = year ? `year = ${year}` : ''
+    return await pb.collection('monthly_closings').getFullList<MonthlyClosingRecord>({
+      filter,
+      sort: '-year,-month',
+      expand: 'store,closed_by,reopened_by',
+    })
+  },
+
+  async closeMonth(
+    year: number,
+    month: number,
+    storeId: string | null,
+    userId: string,
+    summary: any,
+  ) {
+    const existing = await pb.collection('monthly_closings').getFullList<MonthlyClosingRecord>({
+      filter: `year = ${year} && month = ${month} && ${storeId ? `store = '${storeId}'` : `(store = '' || store = null)`}`,
+    })
+
+    if (existing.length > 0) {
+      return await pb.collection('monthly_closings').update(existing[0].id, {
+        status: 'fechado',
+        closed_by: userId,
+        closed_at: new Date().toISOString(),
+        summary,
+      })
+    }
+
+    return await pb.collection('monthly_closings').create({
+      year,
+      month,
+      store: storeId || null,
+      status: 'fechado',
+      closed_by: userId,
+      closed_at: new Date().toISOString(),
+      summary,
+    })
+  },
+
+  async reopenMonth(closingId: string, reason: string, userId: string) {
+    const closing = await pb.collection('monthly_closings').getOne<MonthlyClosingRecord>(closingId)
+    const updated = await pb.collection('monthly_closings').update(closingId, {
+      status: 'aberto',
+      reopened_by: userId,
+      reopened_at: new Date().toISOString(),
+      reopen_reason: reason,
+    })
+
+    await pb.collection('audit_logs').create({
+      entity: 'monthly_closings',
+      record_id: closingId,
+      action: 'reabertura',
+      user: userId,
+      reason,
+      previous_values: { status: 'fechado', year: closing.year, month: closing.month },
+      new_values: { status: 'aberto' },
+    })
+
+    return updated
+  },
+
+  // Audit Logs
+  async listAuditLogs(filter = '', page = 1, perPage = 50) {
+    return await pb.collection('audit_logs').getList<AuditLogRecord>(page, perPage, {
       filter,
       sort: '-created',
-      expand: 'sale,customer,store',
+      expand: 'user',
     })
   },
 }

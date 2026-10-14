@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T20:35:26.134Z",
+  "generatedAt": "2026-10-14T18:12:39.586Z",
   "collections": [
     {
       "name": "users",
@@ -77,6 +77,12 @@
           "required": false,
           "system": false,
           "collectionRef": "stores"
+        },
+        {
+          "name": "default_commission_rate",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -300,6 +306,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "commission_rate",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_products_sku ON products (sku)"]
@@ -371,6 +383,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "commission_rate",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_variants_sku ON product_variants (sku)"]
@@ -846,6 +864,71 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "payment_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pendente", "parcial", "pago"]
+        },
+        {
+          "name": "delivery_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pendente", "entregue"]
+        },
+        {
+          "name": "delivered_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivered_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "authorized_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "authorization_note",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cancellation_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "canceled_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "canceled_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -952,6 +1035,30 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "commission_rate",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "commission_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cost_price_snapshot",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "returned_quantity",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_sale_items_sale ON sale_items (sale)"]
@@ -1033,7 +1140,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["pix", "dinheiro", "cartao_credito"]
+          "selectValues": ["pix", "dinheiro", "cartao_credito", "cartao_debito"]
         },
         {
           "name": "amount",
@@ -1066,6 +1173,49 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "received_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "change_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "installment_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "card_tax_rate",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "card_tax_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "net_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "financial_account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
         }
       ],
       "indexes": []
@@ -1273,7 +1423,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["pendente", "paga"]
+          "selectValues": ["prevista", "liberada", "paga", "estornada", "pendente"]
         },
         {
           "name": "created",
@@ -1288,6 +1438,30 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "released_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "paid_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "competence_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_commissions_seller_status ON commissions (seller, status)"]
@@ -1390,6 +1564,920 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_settings_key ON settings (key)"]
+    },
+    {
+      "name": "financial_accounts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["caixa_fisico", "conta_bancaria", "carteira_digital"]
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "bank_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "initial_balance",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "initial_balance_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "current_balance",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "financial_categories",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "subcategory",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "group",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "ocupacao",
+            "estrutura",
+            "equipe",
+            "marketing",
+            "operacao",
+            "sistemas",
+            "administracao",
+            "vendas",
+            "tributos",
+            "compra_estoque",
+            "investimento",
+            "emprestimo",
+            "aporte",
+            "retirada_socios",
+            "outras"
+          ]
+        },
+        {
+          "name": "nature",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["despesa_operacional", "nao_operacional", "custo_mercadoria", "outro"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "financial_transactions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "receita_venda",
+            "despesa",
+            "transferencia_entre_contas",
+            "aporte",
+            "emprestimo",
+            "retirada",
+            "reembolso",
+            "compra_estoque"
+          ]
+        },
+        {
+          "name": "category",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_categories"
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "store_allocation",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["jockey", "cajuru", "compartilhado"]
+        },
+        {
+          "name": "account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
+        },
+        {
+          "name": "destination_account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "competence_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "payment_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["previsto", "pendente", "parcial", "pago", "cancelado"]
+        },
+        {
+          "name": "paid_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_method",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "pix",
+            "dinheiro",
+            "cartao_credito",
+            "cartao_debito",
+            "transferencia",
+            "boleto"
+          ]
+        },
+        {
+          "name": "recipient_supplier",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "installment_number",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_installments",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sale",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "sales"
+        },
+        {
+          "name": "commission",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "commissions"
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachment",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_fin_trans_date ON financial_transactions (competence_date, status)",
+        "CREATE INDEX idx_fin_trans_due ON financial_transactions (due_date, status)"
+      ]
+    },
+    {
+      "name": "card_receivables",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "sale",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "sales"
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "installment_number",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "total_installments",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "gross_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "fee_rate",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "fee_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "net_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "expected_liquidation_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actual_liquidation_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["a_receber", "liquidado", "antecipado", "cancelado"]
+        },
+        {
+          "name": "target_account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_card_rec_status_date ON card_receivables (status, expected_liquidation_date)"
+      ]
+    },
+    {
+      "name": "recurring_expenses",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_categories"
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "store_allocation",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["jockey", "cajuru", "compartilhado"]
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "frequency",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["mensal", "bimestral", "trimestral", "semestral", "anual"]
+        },
+        {
+          "name": "due_day",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_supplier",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preferred_account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
+        },
+        {
+          "name": "preferred_method",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "pix",
+            "dinheiro",
+            "cartao_credito",
+            "cartao_debito",
+            "transferencia",
+            "boleto"
+          ]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "expense_allocations",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "percentage",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "sale_returns",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "sale",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "sales"
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["devolucao_total", "devolucao_parcial", "cancelamento"]
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "refund_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "refund_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "reembolsado", "sem_reembolso"]
+        },
+        {
+          "name": "refund_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "refund_method",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pix", "dinheiro", "estorno_cartao"]
+        },
+        {
+          "name": "refund_account",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "financial_accounts"
+        },
+        {
+          "name": "product_condition",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "perfeito_retorna_venda",
+            "avariado_indisponivel",
+            "nao_entregue_liberado"
+          ]
+        },
+        {
+          "name": "performed_by",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "items_detail",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "monthly_closings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "year",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "month",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "stores"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["fechado", "aberto"]
+        },
+        {
+          "name": "closed_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reopened_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "reopened_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reopen_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "summary",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_closing_year_month_store ON monthly_closings (year, month, store)"
+      ]
+    },
+    {
+      "name": "audit_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "entity",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "record_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "criacao",
+            "alteracao",
+            "cancelamento",
+            "devolucao",
+            "estorno",
+            "reabertura",
+            "ajuste"
+          ]
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "previous_values",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "new_values",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ip_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_audit_entity_rec ON audit_logs (entity, record_id)"]
     }
   ]
 }
