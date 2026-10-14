@@ -53,13 +53,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 
 export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { user, isProfile } = useAuth()
-  const isAdmin = isProfile('admin')
+  const { user, isAdmin } = useAuth()
 
   const [sale, setSale] = useState<SaleRecord | null>(null)
   const [items, setItems] = useState<SaleItemRecord[]>([])

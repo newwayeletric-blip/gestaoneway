@@ -1,4 +1,5 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
+export { pb }
 import type {
   StoreRecord,
   ProductRecord,
@@ -34,8 +35,16 @@ export const StoresService = {
     })
   },
 
+  async getAll(): Promise<StoreRecord[]> {
+    return this.list()
+  },
+
   async getById(id: string): Promise<StoreRecord> {
     return await pb.collection('stores').getOne<StoreRecord>(id)
+  },
+
+  async update(id: string, data: Partial<StoreRecord>): Promise<StoreRecord> {
+    return await pb.collection('stores').update<StoreRecord>(id, data)
   },
 }
 
@@ -48,6 +57,10 @@ export const ProductsService = {
     })
   },
 
+  async getAll(filter = ''): Promise<ProductRecord[]> {
+    return this.list(filter)
+  },
+
   async getById(id: string): Promise<ProductRecord> {
     return await pb.collection('products').getOne<ProductRecord>(id, {
       expand: 'category',
@@ -58,6 +71,15 @@ export const ProductsService = {
     return await pb.collection('categories').getFullList<CategoryRecord>({
       sort: 'name',
     })
+  },
+
+  async getCategories(): Promise<CategoryRecord[]> {
+    return this.listCategories()
+  },
+
+  async createCategory(data: Partial<CategoryRecord> | string): Promise<CategoryRecord> {
+    const payload = typeof data === 'string' ? { name: data } : data
+    return await pb.collection('categories').create<CategoryRecord>(payload)
   },
 
   async listVariants(productId: string): Promise<ProductVariantRecord[]> {
@@ -100,6 +122,35 @@ export const CustomersService = {
     })
   },
 
+  async getAll(search = ''): Promise<CustomerRecord[]> {
+    let filter = ''
+    if (search.trim()) {
+      const q = search.trim()
+      filter = `name ~ '${q}' || document ~ '${q}' || phone ~ '${q}' || email ~ '${q}'`
+    }
+    return await pb.collection('customers').getFullList<CustomerRecord>({
+      filter,
+      sort: 'name',
+    })
+  },
+
+  async checkDuplicate(
+    field: string,
+    value: string,
+    excludeId?: string,
+  ): Promise<CustomerRecord[]> {
+    if (!value || !value.trim()) return []
+    try {
+      let filter = `${field} = '${value.trim()}'`
+      if (excludeId) {
+        filter += ` && id != '${excludeId}'`
+      }
+      return await pb.collection('customers').getFullList<CustomerRecord>({ filter })
+    } catch {
+      return []
+    }
+  },
+
   async getById(id: string): Promise<CustomerRecord> {
     return await pb.collection('customers').getOne<CustomerRecord>(id)
   },
@@ -119,6 +170,25 @@ export const StockService = {
       filter: `store = '${storeId}'`,
       expand: 'product,variant,store',
     })
+  },
+
+  async getStockItems(storeId?: string): Promise<StockItemRecord[]> {
+    const filter = storeId ? `store = '${storeId}'` : ''
+    return await pb.collection('stock_items').getFullList<StockItemRecord>({
+      filter,
+      expand: 'product,variant,store',
+    })
+  },
+
+  async getLowStockCount(threshold = 2): Promise<number> {
+    try {
+      const items = await pb.collection('stock_items').getFullList<StockItemRecord>({
+        filter: `quantity <= ${threshold}`,
+      })
+      return items.length
+    } catch {
+      return 0
+    }
   },
 
   async listMovements(filter = '', page = 1, perPage = 30) {
@@ -192,21 +262,107 @@ export const StockService = {
     })
   },
 
+  async getTransfers(page = 1, perPage = 50): Promise<TransferRecord[]> {
+    const res = await this.listTransfers(page, perPage)
+    return res.items
+  },
+
+  async getMovements(storeId?: string, perPage = 30) {
+    const filter = storeId ? `store = '${storeId}'` : ''
+    return await this.listMovements(filter, 1, perPage)
+  },
+
+  async recordMovement(data: Partial<StockMovementRecord>): Promise<StockMovementRecord> {
+    return await this.createMovement(data)
+  },
+
+  async cancelTransfer(transferId: string) {
+    const transfer = await pb.collection('transfers').getOne<TransferRecord>(transferId)
+    if (transfer.status !== 'em_transito') {
+      throw new Error('Apenas transferências em trânsito podem ser canceladas.')
+    }
+    const items = await this.getTransferItems(transferId)
+
+    // Devolve para a origem
+    for (const item of items) {
+      let filter = `store = '${transfer.origin_store}' && product = '${item.product}'`
+      if (item.variant) {
+        filter += ` && variant = '${item.variant}'`
+      } else {
+        filter += ` && (variant = '' || variant = null)`
+      }
+      const existing = await pb.collection('stock_items').getFullList<StockItemRecord>({ filter })
+      if (existing.length > 0) {
+        await pb.collection('stock_items').update(existing[0].id, {
+          quantity: existing[0].quantity + item.quantity,
+        })
+      }
+      await pb.collection('stock_movements').create({
+        store: transfer.origin_store,
+        product: item.product,
+        variant: item.variant || null,
+        type: 'ajuste',
+        quantity: item.quantity,
+        date: new Date().toISOString(),
+        user: pb.authStore.record?.id || '',
+        reason: `Cancelamento de transferência #${transfer.id.slice(0, 8)} (estorno para origem)`,
+        source_ref: transfer.id,
+      })
+    }
+
+    return await pb.collection('transfers').update<TransferRecord>(transferId, {
+      status: 'cancelada',
+    })
+  },
+
   async createTransfer(
-    data: {
-      origin_store: string
-      destination_store: string
-      user: string
-      note?: string
-    },
-    items: Array<{
-      product: string
-      variant?: string
-      quantity: number
-    }>,
+    originStoreOrData:
+      | string
+      | {
+          origin_store: string
+          destination_store: string
+          user?: string
+          note?: string
+        },
+    destStoreOrItems:
+      | string
+      | Array<{
+          product: string
+          variant?: string
+          quantity: number
+        }>,
+    itemsOrNote?:
+      | Array<{
+          product: string
+          variant?: string
+          quantity: number
+        }>
+      | string,
+    optionalNote?: string,
   ) {
+    let origin_store = ''
+    let destination_store = ''
+    let user = pb.authStore.record?.id || ''
+    let note = ''
+    let items: Array<{ product: string; variant?: string; quantity: number }> = []
+
+    if (typeof originStoreOrData === 'object') {
+      origin_store = originStoreOrData.origin_store
+      destination_store = originStoreOrData.destination_store
+      user = originStoreOrData.user || user
+      note = originStoreOrData.note || ''
+      items = destStoreOrItems as Array<{ product: string; variant?: string; quantity: number }>
+    } else {
+      origin_store = originStoreOrData
+      destination_store = destStoreOrItems as string
+      items = itemsOrNote as Array<{ product: string; variant?: string; quantity: number }>
+      note = optionalNote || ''
+    }
     const transfer = await pb.collection('transfers').create<TransferRecord>({
-      ...data,
+      origin_store,
+      destination_store,
+      user,
+      note,
       status: 'em_transito',
       date: new Date().toISOString(),
     })
@@ -219,7 +375,7 @@ export const StockService = {
         quantity: item.quantity,
       })
 
-      let filter = `store = '${data.origin_store}' && product = '${item.product}'`
+      let filter = `store = '${origin_store}' && product = '${item.product}'`
       if (item.variant) {
         filter += ` && variant = '${item.variant}'`
       } else {
@@ -233,13 +389,13 @@ export const StockService = {
       }
 
       await pb.collection('stock_movements').create({
-        store: data.origin_store,
+        store: origin_store,
         product: item.product,
         variant: item.variant || null,
         type: 'transferencia_envio',
         quantity: -item.quantity,
         date: new Date().toISOString(),
-        user: data.user,
+        user: user,
         reason: `Transferência #${transfer.id.slice(0, 8)} para outra unidade`,
         source_ref: transfer.id,
       })
@@ -248,7 +404,8 @@ export const StockService = {
     return transfer
   },
 
-  async receiveTransfer(transferId: string, receivedByUserId: string) {
+  async receiveTransfer(transferId: string, receivedByUserId?: string) {
+    const userId = receivedByUserId || pb.authStore.record?.id || ''
     const transfer = await pb.collection('transfers').getOne<TransferRecord>(transferId)
     if (transfer.status !== 'em_transito') {
       throw new Error('Transferência não está em trânsito')
@@ -285,7 +442,7 @@ export const StockService = {
         type: 'transferencia_recebimento',
         quantity: item.quantity,
         date: new Date().toISOString(),
-        user: receivedByUserId,
+        user: userId,
         reason: `Recebimento Transferência #${transfer.id.slice(0, 8)}`,
         source_ref: transfer.id,
       })
@@ -293,7 +450,7 @@ export const StockService = {
 
     return await pb.collection('transfers').update<TransferRecord>(transferId, {
       status: 'recebida',
-      received_by: receivedByUserId,
+      received_by: userId,
       received_at: new Date().toISOString(),
     })
   },
@@ -335,6 +492,18 @@ export const SalesService = {
       sort: '-created',
       expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
     })
+  },
+
+  async getAll(filter = ''): Promise<SaleRecord[]> {
+    return await pb.collection('sales').getFullList<SaleRecord>({
+      filter,
+      sort: '-created',
+      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
+    })
+  },
+
+  async cancelOrReturnSale(saleId: string, reason: string, adminUserId: string) {
+    return this.cancelSale(saleId, reason, adminUserId)
   },
 
   async getById(id: string): Promise<SaleRecord> {
@@ -768,9 +937,23 @@ export const CommissionsService = {
     })
   },
 
+  async getAll(filter = '', storeId?: string): Promise<CommissionRecord[]> {
+    let finalFilter = filter
+    if (storeId) {
+      finalFilter = finalFilter
+        ? `store = '${storeId}' && (${finalFilter})`
+        : `store = '${storeId}'`
+    }
+    return await pb.collection('commissions').getFullList<CommissionRecord>({
+      filter: finalFilter,
+      sort: '-created',
+      expand: 'seller,sale,store',
+    })
+  },
+
   async updateStatus(
     id: string,
-    status: CommissionStatus,
+    status: 'prevista' | 'liberada' | 'paga' | 'estornada' | 'pendente',
     notes?: string,
   ): Promise<CommissionRecord> {
     const updateData: Partial<CommissionRecord> = { status }
@@ -906,6 +1089,15 @@ export const FinancialService = {
     return await pb
       .collection('financial_transactions')
       .update<FinancialTransactionRecord>(id, data)
+  },
+
+  async getExpenses(filter = ''): Promise<FinancialTransactionRecord[]> {
+    const fullFilter = filter ? `type = 'despesa' && (${filter})` : `type = 'despesa'`
+    return await pb.collection('financial_transactions').getFullList<FinancialTransactionRecord>({
+      filter: fullFilter,
+      sort: '-due_date,-created',
+      expand: 'category,store,account',
+    })
   },
 
   async transferBetweenAccounts(

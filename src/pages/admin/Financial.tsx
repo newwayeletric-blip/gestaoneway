@@ -18,6 +18,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Filter,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { FinancialService, StoresService } from '@/services/api'
 import type {
@@ -27,6 +29,7 @@ import type {
   CardReceivableRecord,
   RecurringExpenseRecord,
   ExpenseAllocationRecord,
+  MonthlyClosingRecord,
   StoreRecord,
   FinancialTransactionType,
   FinancialTransactionStatus,
@@ -69,6 +72,20 @@ export function Financial() {
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpenseRecord[]>([])
   const [allocations, setAllocations] = useState<ExpenseAllocationRecord[]>([])
   const [stores, setStores] = useState<StoreRecord[]>([])
+  const [closings, setClosings] = useState<MonthlyClosingRecord[]>([])
+
+  // Modal: Reabertura de Mês Fechado
+  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false)
+  const [selectedClosingToReopen, setSelectedClosingToReopen] = useState<MonthlyClosingRecord | null>(null)
+  const [reopenReason, setReopenReason] = useState('')
+  const [isSavingReopen, setIsSavingReopen] = useState(false)
+
+  // Modal: Fechamento de Mês
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
+  const [closeYear, setCloseYear] = useState(new Date().getFullYear())
+  const [closeMonth, setCloseMonth] = useState(new Date().getMonth() + 1)
+  const [closeStore, setCloseStore] = useState('all')
+  const [isSavingClose, setIsSavingClose] = useState(false)
 
   // Modal: New Transaction (Despesa / Receita / Aporte / Retirada)
   const [isTransModalOpen, setIsTransModalOpen] = useState(false)
@@ -114,7 +131,7 @@ export function Financial() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [accs, cats, transRes, cardRecs, recurrings, allocs, storesList] = await Promise.all([
+      const [accs, cats, transRes, cardRecs, recurrings, allocs, storesList, closingsList] = await Promise.all([
         FinancialService.listAccounts(),
         FinancialService.listCategories(),
         FinancialService.listTransactions('', 1, 100),
@@ -122,6 +139,7 @@ export function Financial() {
         FinancialService.listRecurringExpenses(),
         FinancialService.listAllocations(),
         StoresService.list(),
+        FinancialService.listClosings(),
       ])
 
       setAccounts(accs)
@@ -131,6 +149,7 @@ export function Financial() {
       setRecurringExpenses(recurrings)
       setAllocations(allocs)
       setStores(storesList)
+      setClosings(closingsList)
 
       if (accs.length > 0) {
         setTransAccount(accs[0].id)
@@ -193,6 +212,69 @@ export function Financial() {
       .filter((r) => r.status === 'a_receber')
       .reduce((sum, r) => sum + r.net_amount, 0)
   }, [cardReceivables])
+
+  const handleExecuteClose = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    setIsSavingClose(true)
+    try {
+      await FinancialService.closeMonth(
+        closeYear,
+        closeMonth,
+        closeStore === 'all' ? null : closeStore,
+        user.id,
+        { closedAt: new Date().toISOString() }
+      )
+      toast({
+        title: 'Período encerrado com sucesso!',
+        description: `Mês ${String(closeMonth).padStart(2, '0')}/${closeYear} foi fechado para alterações retroativas.`,
+      })
+      setIsCloseModalOpen(false)
+      loadData()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao fechar período',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingClose(false)
+    }
+  }
+
+  const handleExecuteReopen = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedClosingToReopen || !user) return
+    if (!reopenReason.trim() || reopenReason.trim().length < 5) {
+      toast({
+        title: 'Justificativa obrigatória',
+        description: 'Informe uma justificativa com no mínimo 5 caracteres.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSavingReopen(true)
+    try {
+      await FinancialService.reopenMonth(selectedClosingToReopen.id, reopenReason.trim(), user.id)
+      toast({
+        title: 'Período reaberto!',
+        description: 'A reabertura foi registrada com sucesso na trilha de auditoria.',
+      })
+      setIsReopenModalOpen(false)
+      setSelectedClosingToReopen(null)
+      setReopenReason('')
+      loadData()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao reabrir período',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingReopen(false)
+    }
+  }
 
   // Save new transaction
   const handleSaveTransaction = async (e: React.FormEvent) => {
@@ -450,10 +532,11 @@ export function Financial() {
 
       {/* Main Tabs */}
       <Tabs defaultValue="lancamentos" className="space-y-4">
-        <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-6 w-full">
           <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
           <TabsTrigger value="contas">Caixas e Bancos ({accounts.length})</TabsTrigger>
           <TabsTrigger value="cartoes">Recebíveis Operadora</TabsTrigger>
+          <TabsTrigger value="fechamentos">Fechamento Mensal</TabsTrigger>
           <TabsTrigger value="recorrencias">Recorrências</TabsTrigger>
           <TabsTrigger value="rateios">Rateios entre Lojas</TabsTrigger>
         </TabsList>
@@ -735,6 +818,117 @@ export function Financial() {
                                 onClick={() => handleOpenLiquidate(r)}
                               >
                                 Liquidar
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 3.5: FECHAMENTO MENSAL ADMINISTRATIVO */}
+        <TabsContent value="fechamentos" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-primary" />
+                  Fechamento Administrativo Mensal
+                </CardTitle>
+                <CardDescription>
+                  Bloqueia alterações em vendas, pagamentos e despesas retroativas. Reabertura exige justificativa gravada na auditoria.
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={() => setIsCloseModalOpen(true)}>
+                <Lock className="h-4 w-4 mr-1.5" />
+                Fechar Novo Período
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {closings.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground text-sm border border-dashed rounded-lg">
+                  Nenhum período com fechamento mensal registrado até o momento. Todos os meses estão abertos.
+                </div>
+              ) : (
+                <div className="border rounded-md overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted text-muted-foreground text-left text-xs uppercase font-medium">
+                      <tr>
+                        <th className="py-2.5 px-3">Competência</th>
+                        <th className="py-2.5 px-3">Unidade</th>
+                        <th className="py-2.5 px-3">Situação</th>
+                        <th className="py-2.5 px-3">Fechado por</th>
+                        <th className="py-2.5 px-3">Data Fechamento</th>
+                        <th className="py-2.5 px-3">Observações / Reabertura</th>
+                        <th className="py-2.5 px-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {closings.map((c) => (
+                        <tr key={c.id} className="hover:bg-muted/40">
+                          <td className="py-2.5 px-3 font-semibold">
+                            {String(c.month).padStart(2, '0')}/{c.year}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-muted-foreground">
+                            {c.expand?.store?.name || 'Todas as Unidades (Geral)'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge
+                              variant={c.status === 'fechado' ? 'default' : 'secondary'}
+                              className="text-[10px]"
+                            >
+                              {c.status === 'fechado' ? 'Fechado (Bloqueado)' : 'Aberto / Reaberto'}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 text-xs">
+                            {c.expand?.closed_by?.name || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-muted-foreground">
+                            {c.closed_at ? formatDateBR(c.closed_at) : '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs">
+                            {c.reopen_reason ? (
+                              <span className="text-amber-600 font-medium" title={c.reopen_reason}>
+                                Reaberto: {c.reopen_reason}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {c.status === 'fechado' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs text-amber-600 hover:text-amber-700"
+                                onClick={() => {
+                                  setSelectedClosingToReopen(c)
+                                  setReopenReason('')
+                                  setIsReopenModalOpen(true)
+                                }}
+                              >
+                                <Unlock className="h-3.5 w-3.5 mr-1" />
+                                Reabrir Mês
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  setCloseYear(c.year)
+                                  setCloseMonth(c.month)
+                                  setCloseStore(c.store || 'all')
+                                  setIsCloseModalOpen(true)
+                                }}
+                              >
+                                <Lock className="h-3.5 w-3.5 mr-1" />
+                                Refechar
                               </Button>
                             )}
                           </td>
@@ -1136,6 +1330,136 @@ export function Financial() {
               </Button>
               <Button type="submit" disabled={isSavingTransfer}>
                 {isSavingTransfer ? 'Processando...' : 'Confirmar Transferência'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: FECHAMENTO DE MÊS */}
+      <Dialog open={isCloseModalOpen} onOpenChange={setIsCloseModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleExecuteClose}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-primary" />
+                Fechar Período Mensal Administrativo
+              </DialogTitle>
+              <DialogDescription>
+                Ao fechar o mês, o servidor bloqueia novas vendas, alterações financeiras e lançamentos retroativos com data neste período.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Mês</Label>
+                  <Select value={String(closeMonth)} onValueChange={(v) => setCloseMonth(parseInt(v, 10))}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <SelectItem key={m} value={String(m)}>
+                          {String(m).padStart(2, '0')} - {new Date(2025, m - 1, 1).toLocaleString('pt-BR', { month: 'long' })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Ano</Label>
+                  <Input
+                    type="number"
+                    value={closeYear}
+                    onChange={(e) => setCloseYear(parseInt(e.target.value, 10))}
+                    className="mt-1"
+                    min={2020}
+                    max={2035}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Unidade</Label>
+                <Select value={closeStore} onValueChange={setCloseStore}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Unidades (Geral)</SelectItem>
+                    {stores.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsCloseModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSavingClose}>
+                {isSavingClose ? 'Fechando...' : 'Confirmar Fechamento'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: REABERTURA DE MÊS */}
+      <Dialog open={isReopenModalOpen} onOpenChange={setIsReopenModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleExecuteReopen}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-600">
+                <Unlock className="h-5 w-5" />
+                Reabrir Período Encerrado
+              </DialogTitle>
+              <DialogDescription>
+                Exclusivo para administradores. É obrigatório registrar uma justificativa formal para a trilha de auditoria.
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedClosingToReopen && (
+              <div className="space-y-3 py-3">
+                <div className="p-3 rounded-lg border bg-amber-500/10 text-xs text-amber-800 space-y-1">
+                  <p><strong>Período:</strong> {String(selectedClosingToReopen.month).padStart(2, '0')}/{selectedClosingToReopen.year}</p>
+                  <p><strong>Loja:</strong> {selectedClosingToReopen.expand?.store?.name || 'Geral'}</p>
+                </div>
+
+                <div>
+                  <Label>Justificativa Obrigatória *</Label>
+                  <Textarea
+                    required
+                    value={reopenReason}
+                    onChange={(e) => setReopenReason(e.target.value)}
+                    placeholder="Explique o motivo do ajuste, retificação ou lançamento extemporâneo..."
+                    rows={3}
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Esta justificativa será gravada permanentemente no log de auditoria.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsReopenModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={isSavingReopen || reopenReason.trim().length < 5}
+              >
+                {isSavingReopen ? 'Reabrindo...' : 'Confirmar Reabertura'}
               </Button>
             </DialogFooter>
           </form>

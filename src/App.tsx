@@ -16,21 +16,22 @@ import Forbidden from '@/pages/Forbidden'
 import NotFound from '@/pages/NotFound'
 
 // Admin screens
-import AdminDashboard from '@/pages/admin/Dashboard'
-import Financial from '@/pages/admin/Financial'
-import Commissions from '@/pages/admin/Commissions'
+import { AdminDashboard } from '@/pages/admin/Dashboard'
+import { Financial } from '@/pages/admin/Financial'
+import { Commissions } from '@/pages/admin/Commissions'
 import Reports from '@/pages/admin/Reports'
 import UsersList from '@/pages/admin/UsersList'
 import Settings from '@/pages/admin/Settings'
+import { AuditLogs } from '@/pages/admin/AuditLogs'
 
 // Seller screens
 import SellerDashboard from '@/pages/seller/SellerDashboard'
 import MyCommissions from '@/pages/seller/MyCommissions'
 
 // Sales
-import NewSale from '@/pages/sales/NewSale'
+import { NewSale } from '@/pages/sales/NewSale'
 import SalesList from '@/pages/sales/SalesList'
-import SaleDetail from '@/pages/sales/SaleDetail'
+import { SaleDetail } from '@/pages/sales/SaleDetail'
 
 // Shared modules
 import Products from '@/pages/products/Products'
@@ -78,6 +79,7 @@ export default function App() {
                     <Route path="/financeiro" element={<Financial />} />
                     <Route path="/comissoes" element={<Commissions />} />
                     <Route path="/relatorios" element={<Reports />} />
+                    <Route path="/auditoria" element={<AuditLogs />} />
                     <Route path="/usuarios" element={<UsersList />} />
                     <Route path="/configuracoes" element={<Settings />} />
                     <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />

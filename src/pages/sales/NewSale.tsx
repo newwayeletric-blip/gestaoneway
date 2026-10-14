@@ -88,8 +88,7 @@ interface PaymentEntry {
 
 export function NewSale() {
   const navigate = useNavigate()
-  const { user, isProfile } = useAuth()
-  const isAdmin = isProfile('admin')
+  const { user, isAdmin } = useAuth()
 
   // Data states
   const [stores, setStores] = useState<StoreRecord[]>([])

@@ -16,6 +16,7 @@ import {
   PlusCircle,
   AlertTriangle,
   LogOut,
+  ShieldAlert,
   Menu,
   X,
   Store as StoreIcon,
@@ -80,6 +81,7 @@ export default function Layout() {
     { label: 'Financeiro', path: '/financeiro', icon: DollarSign },
     { label: 'Comissões', path: '/comissoes', icon: Percent },
     { label: 'Relatórios', path: '/relatorios', icon: FileSpreadsheet },
+    { label: 'Auditoria', path: '/auditoria', icon: ShieldAlert },
     { label: 'Usuários e configurações', path: '/usuarios', icon: Settings },
   ]
 
@@ -121,6 +123,7 @@ export default function Layout() {
     if (path === '/comissoes' || path === '/minhas-comissoes')
       return isAdmin ? 'Gestão de Comissões' : 'Minhas Comissões'
     if (path === '/relatorios') return 'Relatórios Gerenciais'
+    if (path === '/auditoria') return 'Trilha de Auditoria'
     if (path === '/usuarios') return 'Colaboradores & Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'
     if (path === '/dashboard') return 'Dashboard Geral'

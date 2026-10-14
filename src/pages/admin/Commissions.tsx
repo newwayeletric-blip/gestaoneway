@@ -41,7 +41,7 @@ import {
 import { formatBRL, formatDateBR } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 
 export function Commissions() {
   const { user } = useAuth()

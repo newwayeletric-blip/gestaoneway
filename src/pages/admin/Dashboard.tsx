@@ -14,6 +14,8 @@ import {
   FileSpreadsheet,
   PieChart as PieChartIcon,
   Info,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react'
 import { SalesService, StoresService, FinancialService } from '@/services/api'
 import type {

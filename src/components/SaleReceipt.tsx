@@ -5,22 +5,43 @@ import { Printer, ArrowLeft, CheckCircle2, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 interface SaleReceiptProps {
-  sale: any
-  items: any[]
-  customer: any
-  store: any
-  seller: any
+  sale?: any
+  saleId?: string
+  items?: any[]
+  customer?: any
+  store?: any
+  seller?: any
   onClose?: () => void
 }
 
 export const SaleReceipt: React.FC<SaleReceiptProps> = ({
-  sale,
-  items,
-  customer,
-  store,
-  seller,
+  sale: propSale,
+  saleId,
+  items: propItems,
+  customer: propCustomer,
+  store: propStore,
+  seller: propSeller,
   onClose,
 }) => {
+  const [loadedSale, setLoadedSale] = React.useState<any>(propSale || null)
+  const [loadedItems, setLoadedItems] = React.useState<any[]>(propItems || [])
+
+  React.useEffect(() => {
+    if (!loadedSale && saleId) {
+      import('@/services/api').then(({ SalesService }) => {
+        SalesService.getById(saleId).then((s) => {
+          setLoadedSale(s)
+          SalesService.getItems(saleId).then((its) => setLoadedItems(its))
+        })
+      })
+    }
+  }, [saleId, loadedSale])
+
+  const sale = loadedSale || propSale
+  const items = propItems && propItems.length > 0 ? propItems : loadedItems
+  const customer = propCustomer || sale?.expand?.customer
+  const store = propStore || sale?.expand?.store
+  const seller = propSeller || sale?.expand?.seller
   const handlePrint = () => {
     window.print()
   }
