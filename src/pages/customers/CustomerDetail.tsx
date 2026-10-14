@@ -73,13 +73,14 @@ export default function CustomerDetail() {
       try {
         const docs = await SalesService.getDocumentsByCustomer(id)
         // Se vendedor, filtrar para garantir que só vê documentos de vendas que ele pode consultar
+        const userStores = user?.stores || []
         const allowedDocs = isAdmin
           ? docs
           : docs.filter(
               (d) =>
                 !d.expand?.sale ||
                 d.expand.sale.seller === user?.id ||
-                d.expand.sale.store === user?.store,
+                (d.expand.sale.store && userStores.includes(d.expand.sale.store)),
             )
         setDocuments(allowedDocs)
       } catch (docErr) {
