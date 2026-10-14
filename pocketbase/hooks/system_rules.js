@@ -25,7 +25,9 @@ onRecordCreateRequest((e) => {
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
-      throw new BadRequestError('Operação bloqueada: o período (mês/ano) desta venda já se encontra encerrado no Fechamento Mensal Administrativo.')
+      throw new BadRequestError(
+        'Operação bloqueada: o período (mês/ano) desta venda já se encontra encerrado no Fechamento Mensal Administrativo.',
+      )
     }
   }
   return e.next()
@@ -50,7 +52,9 @@ onRecordUpdateRequest((e) => {
       }
       const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
       if (closings && closings.length > 0) {
-        throw new BadRequestError('Operação bloqueada: não é permitido alterar vendas em mês com Fechamento Administrativo encerrado.')
+        throw new BadRequestError(
+          'Operação bloqueada: não é permitido alterar vendas em mês com Fechamento Administrativo encerrado.',
+        )
       }
     }
   }
@@ -78,7 +82,9 @@ onRecordCreateRequest((e) => {
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
-      throw new BadRequestError('Operação bloqueada: não é permitido lançar pagamentos em vendas de período encerrado no Fechamento Mensal.')
+      throw new BadRequestError(
+        'Operação bloqueada: não é permitido lançar pagamentos em vendas de período encerrado no Fechamento Mensal.',
+      )
     }
   }
   return e.next()
@@ -86,7 +92,11 @@ onRecordCreateRequest((e) => {
 
 // Bloqueio de movimentações financeiras em período fechado (Criação)
 onRecordCreateRequest((e) => {
-  const dateStr = e.record.get('payment_date') || e.record.get('competence_date') || e.record.get('due_date') || new Date().toISOString()
+  const dateStr =
+    e.record.get('payment_date') ||
+    e.record.get('competence_date') ||
+    e.record.get('due_date') ||
+    new Date().toISOString()
   const storeId = e.record.get('store')
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) {
@@ -98,7 +108,9 @@ onRecordCreateRequest((e) => {
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
-      throw new BadRequestError('Operação bloqueada: a data desta movimentação financeira pertence a um período com Fechamento Mensal encerrado.')
+      throw new BadRequestError(
+        'Operação bloqueada: a data desta movimentação financeira pertence a um período com Fechamento Mensal encerrado.',
+      )
     }
   }
   return e.next()
@@ -107,8 +119,13 @@ onRecordCreateRequest((e) => {
 // Bloqueio de movimentações financeiras em período fechado (Atualização)
 onRecordUpdateRequest((e) => {
   const original = e.app.findRecordById('financial_transactions', e.record.id)
-  const oldDateStr = original.get('payment_date') || original.get('competence_date') || original.get('due_date')
-  const newDateStr = e.record.get('payment_date') || e.record.get('competence_date') || e.record.get('due_date') || oldDateStr
+  const oldDateStr =
+    original.get('payment_date') || original.get('competence_date') || original.get('due_date')
+  const newDateStr =
+    e.record.get('payment_date') ||
+    e.record.get('competence_date') ||
+    e.record.get('due_date') ||
+    oldDateStr
   const storeId = e.record.get('store') || original.get('store')
 
   const datesToCheck = [oldDateStr, newDateStr].filter(Boolean)
@@ -123,7 +140,9 @@ onRecordUpdateRequest((e) => {
       }
       const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
       if (closings && closings.length > 0) {
-        throw new BadRequestError('Operação bloqueada: não é permitido modificar lançamentos financeiros em período encerrado no Fechamento Mensal.')
+        throw new BadRequestError(
+          'Operação bloqueada: não é permitido modificar lançamentos financeiros em período encerrado no Fechamento Mensal.',
+        )
       }
     }
   }
@@ -144,7 +163,9 @@ onRecordCreateRequest((e) => {
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
-      throw new BadRequestError('Operação bloqueada: não é permitido lançar movimentações de estoque em mês encerrado pelo Fechamento Mensal.')
+      throw new BadRequestError(
+        'Operação bloqueada: não é permitido lançar movimentações de estoque em mês encerrado pelo Fechamento Mensal.',
+      )
     }
   }
   return e.next()
@@ -165,7 +186,9 @@ onRecordUpdateRequest((e) => {
     }
     const reason = e.record.getString('reopen_reason')
     if (!reason || reason.trim().length < 5) {
-      throw new BadRequestError('Justificativa obrigatória para reabertura de fechamento mensal (mínimo 5 caracteres).')
+      throw new BadRequestError(
+        'Justificativa obrigatória para reabertura de fechamento mensal (mínimo 5 caracteres).',
+      )
     }
     e.record.set('reopened_by', auth.id)
     e.record.set('reopened_at', new Date().toISOString())
@@ -193,7 +216,9 @@ onRecordUpdateRequest((e) => {
 onRecordDeleteRequest((e) => {
   const status = e.record.getString('status')
   if (status !== 'orcamento' && status !== 'cancelada') {
-    throw new BadRequestError('Vendas registradas não podem ser excluídas fisicamente do banco de dados. Utilize a opção de Cancelamento/Devolução com justificativa.')
+    throw new BadRequestError(
+      'Vendas registradas não podem ser excluídas fisicamente do banco de dados. Utilize a opção de Cancelamento/Devolução com justificativa.',
+    )
   }
   return e.next()
 }, 'sales')
@@ -201,7 +226,9 @@ onRecordDeleteRequest((e) => {
 onRecordDeleteRequest((e) => {
   const status = e.record.getString('status')
   if (status === 'pago') {
-    throw new BadRequestError('Transações financeiras quitadas não podem ser excluídas. Utilize o estorno/cancelamento com registro de auditoria.')
+    throw new BadRequestError(
+      'Transações financeiras quitadas não podem ser excluídas. Utilize o estorno/cancelamento com registro de auditoria.',
+    )
   }
   return e.next()
 }, 'financial_transactions')
@@ -209,13 +236,23 @@ onRecordDeleteRequest((e) => {
 onRecordDeleteRequest((e) => {
   const prodId = e.record.id
   try {
-    const stockItems = e.app.findRecordsByFilter('stock_items', `product = '${prodId}' && quantity > 0`, '', 1, 0)
+    const stockItems = e.app.findRecordsByFilter(
+      'stock_items',
+      `product = '${prodId}' && quantity > 0`,
+      '',
+      1,
+      0,
+    )
     if (stockItems && stockItems.length > 0) {
-      throw new BadRequestError('Não é permitido excluir produto que possui unidades em estoque. Inative o produto ou zere o estoque antes.')
+      throw new BadRequestError(
+        'Não é permitido excluir produto que possui unidades em estoque. Inative o produto ou zere o estoque antes.',
+      )
     }
     const sales = e.app.findRecordsByFilter('sale_items', `product = '${prodId}'`, '', 1, 0)
     if (sales && sales.length > 0) {
-      throw new BadRequestError('Não é permitido excluir produto com histórico de vendas. Altere o status para inativo.')
+      throw new BadRequestError(
+        'Não é permitido excluir produto com histórico de vendas. Altere o status para inativo.',
+      )
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err
@@ -271,8 +308,16 @@ onRecordUpdateRequest((e) => {
       rec.set('action', 'alteracao')
       rec.set('user', e.auth ? e.auth.id : null)
       rec.set('reason', 'Alteração de perfil, status ou taxa de comissão padrão')
-      rec.set('previous_values', { profile: oldProfile, status: oldStatus, default_commission_rate: oldRate })
-      rec.set('new_values', { profile: newProfile, status: newStatus, default_commission_rate: newRate })
+      rec.set('previous_values', {
+        profile: oldProfile,
+        status: oldStatus,
+        default_commission_rate: oldRate,
+      })
+      rec.set('new_values', {
+        profile: newProfile,
+        status: newStatus,
+        default_commission_rate: newRate,
+      })
       e.app.save(rec)
     } catch (_) {}
   }
@@ -375,7 +420,7 @@ onRecordUpdateRequest((e) => {
 onRecordUpdateRequest((e) => {
   const original = e.app.findRecordById('commissions', e.record.id)
   const oldStatus = original.get('status')
-  const newStatus = e.record.get('status')
+  const newStatus = e.record.getString('status')
 
   if (oldStatus !== newStatus) {
     try {
@@ -393,3 +438,50 @@ onRecordUpdateRequest((e) => {
   }
   return e.next()
 }, 'commissions')
+
+// ==========================================
+// E. VALIDAÇÃO DE ARQUIVOS E PRIVACIDADE DE DOCUMENTOS
+// ==========================================
+
+// Validação estrita de upload em sale_documents
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth) {
+    throw new ForbiddenError('Apenas usuários autenticados podem anexar documentos.')
+  }
+
+  const saleId = e.record.getString('sale')
+  if (!saleId) {
+    throw new BadRequestError('Venda vinculada é obrigatória para anexar documento.')
+  }
+
+  // Se o usuário for vendedor, verificar se a venda pertence a ele
+  if (auth.getString('profile') === 'vendedor') {
+    try {
+      const sale = e.app.findRecordById('sales', saleId)
+      if (sale.getString('seller') !== auth.id) {
+        throw new ForbiddenError(
+          'Vendedor só tem permissão para anexar documentos em suas próprias vendas.',
+        )
+      }
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err
+      throw new BadRequestError('Venda informada não foi encontrada.')
+    }
+  }
+
+  e.record.set('uploaded_by', auth.id)
+  return e.next()
+}, 'sale_documents')
+
+// Vendedor não pode visualizar nem listar comprovantes financeiros ou auditoria
+onRecordCreateRequest((e) => {
+  const auth = e.auth
+  if (!auth || auth.getString('profile') !== 'admin') {
+    throw new ForbiddenError(
+      'Apenas administradores podem anexar comprovantes a lançamentos financeiros.',
+    )
+  }
+  e.record.set('uploaded_by', auth.id)
+  return e.next()
+}, 'transaction_attachments')

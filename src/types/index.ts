@@ -429,6 +429,20 @@ export interface FinancialTransactionRecord {
   }
 }
 
+export interface TransactionAttachmentRecord {
+  id: string
+  transaction: string
+  file: string
+  name: string
+  file_size?: number
+  uploaded_by?: string
+  created: string
+  updated: string
+  expand?: {
+    uploaded_by?: UserRecord
+  }
+}
+
 export interface CardReceivableRecord {
   id: string
   sale: string

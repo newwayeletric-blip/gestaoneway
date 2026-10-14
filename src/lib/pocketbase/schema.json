@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T18:24:31.423Z",
+  "generatedAt": "2026-10-14T18:45:01.584Z",
   "collections": [
     {
       "name": "users",
@@ -1067,8 +1067,8 @@
       "name": "sale_documents",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && (@request.auth.profile = 'admin' || sale.seller = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.profile = 'admin' || sale.seller = @request.auth.id)",
         "create": "@request.auth.id != ''",
         "update": "@request.auth.profile = 'admin'",
         "delete": "@request.auth.profile = 'admin'"
@@ -1113,6 +1113,25 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "doc_type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "nota_fiscal",
+            "comprovante_pagamento",
+            "recibo_entrega",
+            "termo_garantia",
+            "outro"
+          ]
+        },
+        {
+          "name": "file_size",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -2478,6 +2497,66 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_audit_entity_rec ON audit_logs (entity, record_id)"]
+    },
+    {
+      "name": "transaction_attachments",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.profile = 'admin'",
+        "view": "@request.auth.profile = 'admin'",
+        "create": "@request.auth.profile = 'admin'",
+        "update": "@request.auth.profile = 'admin'",
+        "delete": "@request.auth.profile = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "transaction",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "financial_transactions"
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "file_size",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uploaded_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_tx_att_trans ON transaction_attachments (transaction)"]
     }
   ]
 }

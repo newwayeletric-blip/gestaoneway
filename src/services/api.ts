@@ -26,6 +26,7 @@ import type {
   SaleReturnRecord,
   MonthlyClosingRecord,
   AuditLogRecord,
+  TransactionAttachmentRecord,
 } from '@/types'
 
 export const StoresService = {
@@ -1074,6 +1075,57 @@ export const FinancialService = {
         sort: '-due_date,-created',
         expand: 'category,store,account,destination_account,sale,commission,created_by',
       })
+  },
+
+  async getAllTransactions(filter = ''): Promise<FinancialTransactionRecord[]> {
+    return await pb.collection('financial_transactions').getFullList<FinancialTransactionRecord>({
+      filter,
+      sort: '-due_date,-created',
+      expand: 'category,store,account,destination_account,sale,commission,created_by',
+    })
+  },
+
+  // Attachments for financial transactions (múltiplos comprovantes)
+  async getAttachments(transactionId: string): Promise<TransactionAttachmentRecord[]> {
+    return await pb.collection('transaction_attachments').getFullList<TransactionAttachmentRecord>({
+      filter: `transaction = '${transactionId}'`,
+      sort: '-created',
+      expand: 'uploaded_by',
+    })
+  },
+
+  async uploadAttachment(
+    transactionId: string,
+    file: File,
+    name?: string,
+  ): Promise<TransactionAttachmentRecord> {
+    const formData = new FormData()
+    formData.append('transaction', transactionId)
+    formData.append('file', file)
+    formData.append('name', name || file.name)
+    formData.append('file_size', String(file.size))
+    if (pb.authStore.record?.id) {
+      formData.append('uploaded_by', pb.authStore.record.id)
+    }
+    return await pb
+      .collection('transaction_attachments')
+      .create<TransactionAttachmentRecord>(formData)
+  },
+
+  async uploadMultipleAttachments(
+    transactionId: string,
+    files: File[],
+  ): Promise<TransactionAttachmentRecord[]> {
+    const results: TransactionAttachmentRecord[] = []
+    for (const f of files) {
+      const res = await this.uploadAttachment(transactionId, f, f.name)
+      results.push(res)
+    }
+    return results
+  },
+
+  async deleteAttachment(attachmentId: string): Promise<boolean> {
+    return await pb.collection('transaction_attachments').delete(attachmentId)
   },
 
   async createTransaction(

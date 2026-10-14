@@ -89,9 +89,17 @@ export function AuditLogs() {
       case 'criacao':
         return <Badge className="bg-emerald-600 text-white text-[10px]">Criação</Badge>
       case 'alteracao':
-        return <Badge variant="outline" className="text-[10px] border-blue-500 text-blue-600">Alteração</Badge>
+        return (
+          <Badge variant="outline" className="text-[10px] border-blue-500 text-blue-600">
+            Alteração
+          </Badge>
+        )
       case 'cancelamento':
-        return <Badge variant="destructive" className="text-[10px]">Cancelamento</Badge>
+        return (
+          <Badge variant="destructive" className="text-[10px]">
+            Cancelamento
+          </Badge>
+        )
       case 'devolucao':
         return <Badge className="bg-amber-600 text-white text-[10px]">Devolução</Badge>
       case 'estorno':
@@ -99,9 +107,17 @@ export function AuditLogs() {
       case 'reabertura':
         return <Badge className="bg-red-700 text-white text-[10px] font-bold">Reabertura</Badge>
       case 'ajuste':
-        return <Badge variant="secondary" className="text-[10px]">Ajuste</Badge>
+        return (
+          <Badge variant="secondary" className="text-[10px]">
+            Ajuste
+          </Badge>
+        )
       default:
-        return <Badge variant="outline" className="text-[10px]">{action}</Badge>
+        return (
+          <Badge variant="outline" className="text-[10px]">
+            {action}
+          </Badge>
+        )
     }
   }
 
@@ -138,7 +154,8 @@ export function AuditLogs() {
             Trilha de Auditoria do Sistema
           </h1>
           <p className="text-sm text-muted-foreground">
-            Registro imutável de alterações de preços, custos, estoque, permissões, vendas e financeiro
+            Registro imutável de alterações de preços, custos, estoque, permissões, vendas e
+            financeiro
           </p>
         </div>
 
@@ -215,9 +232,12 @@ export function AuditLogs() {
       {/* Logs Table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Eventos Registrados ({totalItems})</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Eventos Registrados ({totalItems})
+          </CardTitle>
           <CardDescription>
-            Histórico cronológico de operações críticas para conformidade e segurança da administração
+            Histórico cronológico de operações críticas para conformidade e segurança da
+            administração
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -246,21 +266,29 @@ export function AuditLogs() {
                   {logs.map((log) => (
                     <tr key={log.id} className="hover:bg-muted/40">
                       <td className="py-2.5 px-3 text-xs whitespace-nowrap text-muted-foreground">
-                        {formatDateBR(log.created)} {new Date(log.created).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateBR(log.created)}{' '}
+                        {new Date(log.created).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </td>
                       <td className="py-2.5 px-3 font-medium text-xs">
                         <div className="flex items-center gap-1.5">
                           <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span>{log.expand?.user?.name || log.expand?.user?.email || 'Sistema'}</span>
+                          <span>
+                            {log.expand?.user?.name || log.expand?.user?.email || 'Sistema'}
+                          </span>
                         </div>
                       </td>
                       <td className="py-2.5 px-3 text-xs">
-                        <span className="font-medium text-foreground">{getEntityLabel(log.entity)}</span>
-                        <p className="text-[10px] text-muted-foreground font-mono">ID: {log.record_id.slice(0, 8)}</p>
+                        <span className="font-medium text-foreground">
+                          {getEntityLabel(log.entity)}
+                        </span>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          ID: {log.record_id.slice(0, 8)}
+                        </p>
                       </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {getActionBadge(log.action)}
-                      </td>
+                      <td className="py-2.5 px-3 text-center">{getActionBadge(log.action)}</td>
                       <td className="py-2.5 px-3 text-xs">
                         <p className="font-medium">{log.reason || '-'}</p>
                       </td>

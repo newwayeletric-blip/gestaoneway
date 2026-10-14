@@ -76,7 +76,8 @@ export function Financial() {
 
   // Modal: Reabertura de Mês Fechado
   const [isReopenModalOpen, setIsReopenModalOpen] = useState(false)
-  const [selectedClosingToReopen, setSelectedClosingToReopen] = useState<MonthlyClosingRecord | null>(null)
+  const [selectedClosingToReopen, setSelectedClosingToReopen] =
+    useState<MonthlyClosingRecord | null>(null)
   const [reopenReason, setReopenReason] = useState('')
   const [isSavingReopen, setIsSavingReopen] = useState(false)
 
@@ -131,16 +132,17 @@ export function Financial() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [accs, cats, transRes, cardRecs, recurrings, allocs, storesList, closingsList] = await Promise.all([
-        FinancialService.listAccounts(),
-        FinancialService.listCategories(),
-        FinancialService.listTransactions('', 1, 100),
-        FinancialService.listCardReceivables('', 1, 100),
-        FinancialService.listRecurringExpenses(),
-        FinancialService.listAllocations(),
-        StoresService.list(),
-        FinancialService.listClosings(),
-      ])
+      const [accs, cats, transRes, cardRecs, recurrings, allocs, storesList, closingsList] =
+        await Promise.all([
+          FinancialService.listAccounts(),
+          FinancialService.listCategories(),
+          FinancialService.listTransactions('', 1, 100),
+          FinancialService.listCardReceivables('', 1, 100),
+          FinancialService.listRecurringExpenses(),
+          FinancialService.listAllocations(),
+          StoresService.list(),
+          FinancialService.listClosings(),
+        ])
 
       setAccounts(accs)
       setCategories(cats)
@@ -223,7 +225,7 @@ export function Financial() {
         closeMonth,
         closeStore === 'all' ? null : closeStore,
         user.id,
-        { closedAt: new Date().toISOString() }
+        { closedAt: new Date().toISOString() },
       )
       toast({
         title: 'Período encerrado com sucesso!',
@@ -841,7 +843,8 @@ export function Financial() {
                   Fechamento Administrativo Mensal
                 </CardTitle>
                 <CardDescription>
-                  Bloqueia alterações em vendas, pagamentos e despesas retroativas. Reabertura exige justificativa gravada na auditoria.
+                  Bloqueia alterações em vendas, pagamentos e despesas retroativas. Reabertura exige
+                  justificativa gravada na auditoria.
                 </CardDescription>
               </div>
               <Button size="sm" onClick={() => setIsCloseModalOpen(true)}>
@@ -852,7 +855,8 @@ export function Financial() {
             <CardContent>
               {closings.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground text-sm border border-dashed rounded-lg">
-                  Nenhum período com fechamento mensal registrado até o momento. Todos os meses estão abertos.
+                  Nenhum período com fechamento mensal registrado até o momento. Todos os meses
+                  estão abertos.
                 </div>
               ) : (
                 <div className="border rounded-md overflow-hidden">
@@ -1346,7 +1350,8 @@ export function Financial() {
                 Fechar Período Mensal Administrativo
               </DialogTitle>
               <DialogDescription>
-                Ao fechar o mês, o servidor bloqueia novas vendas, alterações financeiras e lançamentos retroativos com data neste período.
+                Ao fechar o mês, o servidor bloqueia novas vendas, alterações financeiras e
+                lançamentos retroativos com data neste período.
               </DialogDescription>
             </DialogHeader>
 
@@ -1354,14 +1359,18 @@ export function Financial() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Mês</Label>
-                  <Select value={String(closeMonth)} onValueChange={(v) => setCloseMonth(parseInt(v, 10))}>
+                  <Select
+                    value={String(closeMonth)}
+                    onValueChange={(v) => setCloseMonth(parseInt(v, 10))}
+                  >
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                         <SelectItem key={m} value={String(m)}>
-                          {String(m).padStart(2, '0')} - {new Date(2025, m - 1, 1).toLocaleString('pt-BR', { month: 'long' })}
+                          {String(m).padStart(2, '0')} -{' '}
+                          {new Date(2025, m - 1, 1).toLocaleString('pt-BR', { month: 'long' })}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1422,15 +1431,22 @@ export function Financial() {
                 Reabrir Período Encerrado
               </DialogTitle>
               <DialogDescription>
-                Exclusivo para administradores. É obrigatório registrar uma justificativa formal para a trilha de auditoria.
+                Exclusivo para administradores. É obrigatório registrar uma justificativa formal
+                para a trilha de auditoria.
               </DialogDescription>
             </DialogHeader>
 
             {selectedClosingToReopen && (
               <div className="space-y-3 py-3">
                 <div className="p-3 rounded-lg border bg-amber-500/10 text-xs text-amber-800 space-y-1">
-                  <p><strong>Período:</strong> {String(selectedClosingToReopen.month).padStart(2, '0')}/{selectedClosingToReopen.year}</p>
-                  <p><strong>Loja:</strong> {selectedClosingToReopen.expand?.store?.name || 'Geral'}</p>
+                  <p>
+                    <strong>Período:</strong>{' '}
+                    {String(selectedClosingToReopen.month).padStart(2, '0')}/
+                    {selectedClosingToReopen.year}
+                  </p>
+                  <p>
+                    <strong>Loja:</strong> {selectedClosingToReopen.expand?.store?.name || 'Geral'}
+                  </p>
                 </div>
 
                 <div>
