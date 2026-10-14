@@ -475,6 +475,7 @@ onRecordCreateRequest((e) => {
 }, 'sale_documents')
 
 // Vendedor não pode visualizar nem listar comprovantes financeiros ou auditoria
+// Validação no servidor de tamanho e tipos de arquivo permitidos (PDF, imagens, XML)
 onRecordCreateRequest((e) => {
   const auth = e.auth
   if (!auth || auth.getString('profile') !== 'admin') {
@@ -482,6 +483,31 @@ onRecordCreateRequest((e) => {
       'Apenas administradores podem anexar comprovantes a lançamentos financeiros.',
     )
   }
+
+  const txId = e.record.getString('transaction')
+  if (!txId) {
+    throw new BadRequestError('Lançamento financeiro vinculado é obrigatório.')
+  }
+
+  // Validar se o lançamento financeiro existe
+  try {
+    e.app.findRecordById('financial_transactions', txId)
+  } catch (_) {
+    throw new BadRequestError('Lançamento financeiro informado não foi encontrado.')
+  }
+
+  // Validação de tipo de arquivo (PDF, imagens, XML)
+  const fileField = e.record.getString('file')
+  if (fileField) {
+    const ext = fileField.toLowerCase().split('.').pop() || ''
+    const allowedExtensions = ['pdf', 'xml', 'jpg', 'jpeg', 'png', 'webp']
+    if (!allowedExtensions.includes(ext)) {
+      throw new BadRequestError(
+        'Tipo de arquivo inválido. Apenas PDF, imagens (JPG, PNG, WEBP) e XML são permitidos.',
+      )
+    }
+  }
+
   e.record.set('uploaded_by', auth.id)
   return e.next()
 }, 'transaction_attachments')

@@ -534,6 +534,14 @@ export const SalesService = {
     })
   },
 
+  async getDocumentsByCustomer(customerId: string): Promise<SaleDocumentRecord[]> {
+    return await pb.collection('sale_documents').getFullList<SaleDocumentRecord>({
+      filter: `sale.customer = '${customerId}'`,
+      sort: '-created',
+      expand: 'sale,uploaded_by',
+    })
+  },
+
   async uploadDocument(
     saleId: string,
     file: File,

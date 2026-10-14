@@ -20,7 +20,13 @@ import {
   Filter,
   Lock,
   Unlock,
+  Paperclip,
+  Trash2,
+  Upload,
+  FileText,
+  ExternalLink,
 } from 'lucide-react'
+import { pb } from '@/lib/pocketbase/client'
 import { FinancialService, StoresService } from '@/services/api'
 import type {
   FinancialAccountRecord,
@@ -33,6 +39,7 @@ import type {
   StoreRecord,
   FinancialTransactionType,
   FinancialTransactionStatus,
+  TransactionAttachmentRecord,
 } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -123,6 +130,17 @@ export function Financial() {
   const [liquidateAccount, setLiquidateAccount] = useState('')
   const [liquidateDate, setLiquidateDate] = useState(new Date().toISOString().split('T')[0])
   const [isSavingLiquidation, setIsSavingLiquidation] = useState(false)
+
+  // Modal: Múltiplos comprovantes / anexos de lançamento
+  const [isAttachmentsModalOpen, setIsAttachmentsModalOpen] = useState(false)
+  const [selectedTransactionForAttachments, setSelectedTransactionForAttachments] =
+    useState<FinancialTransactionRecord | null>(null)
+  const [transactionAttachments, setTransactionAttachments] = useState<
+    TransactionAttachmentRecord[]
+  >([])
+  const [loadingAttachments, setLoadingAttachments] = useState(false)
+  const [uploadingAttachments, setUploadingAttachments] = useState(false)
+  const [selectedFilesForTx, setSelectedFilesForTx] = useState<File[]>([])
 
   // Filters for Transactions table
   const [filterType, setFilterType] = useState('all')
@@ -275,6 +293,91 @@ export function Financial() {
       })
     } finally {
       setIsSavingReopen(false)
+    }
+  }
+
+  // Gerenciamento de comprovantes múltiplos
+  const handleOpenAttachments = async (tx: FinancialTransactionRecord) => {
+    setSelectedTransactionForAttachments(tx)
+    setIsAttachmentsModalOpen(true)
+    setSelectedFilesForTx([])
+    setLoadingAttachments(true)
+    try {
+      const atts = await FinancialService.getAttachments(tx.id)
+      setTransactionAttachments(atts)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao carregar comprovantes',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setLoadingAttachments(false)
+    }
+  }
+
+  const handleUploadTxAttachments = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedTransactionForAttachments || selectedFilesForTx.length === 0) return
+
+    // Validar tipo de arquivo no cliente
+    const allowed = ['pdf', 'xml', 'jpg', 'jpeg', 'png', 'webp']
+    for (const f of selectedFilesForTx) {
+      const ext = f.name.toLowerCase().split('.').pop() || ''
+      if (!allowed.includes(ext)) {
+        toast({
+          title: 'Tipo de arquivo não permitido',
+          description: `O arquivo ${f.name} possui extensão não suportada. Use PDF, imagens ou XML.`,
+          variant: 'destructive',
+        })
+        return
+      }
+      if (f.size > 15 * 1024 * 1024) {
+        toast({
+          title: 'Arquivo muito grande',
+          description: `O arquivo ${f.name} excede o limite de 15MB.`,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
+    setUploadingAttachments(true)
+    try {
+      await FinancialService.uploadMultipleAttachments(
+        selectedTransactionForAttachments.id,
+        selectedFilesForTx,
+      )
+      toast({
+        title: 'Comprovante(s) anexado(s) com sucesso!',
+        description: `${selectedFilesForTx.length} arquivo(s) salvo(s) com segurança.`,
+      })
+      setSelectedFilesForTx([])
+      const atts = await FinancialService.getAttachments(selectedTransactionForAttachments.id)
+      setTransactionAttachments(atts)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao enviar comprovantes',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingAttachments(false)
+    }
+  }
+
+  const handleDeleteTxAttachment = async (attId: string) => {
+    if (!confirm('Deseja realmente remover este comprovante?')) return
+    try {
+      await FinancialService.deleteAttachment(attId)
+      setTransactionAttachments((prev) => prev.filter((a) => a.id !== attId))
+      toast({ title: 'Comprovante removido com sucesso' })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir comprovante',
+        description: err.message,
+        variant: 'destructive',
+      })
     }
   }
 
@@ -631,6 +734,7 @@ export function Financial() {
                         <th className="py-2.5 px-3">Vencimento</th>
                         <th className="py-2.5 px-3 text-right">Valor</th>
                         <th className="py-2.5 px-3 text-center">Situação</th>
+                        <th className="py-2.5 px-3 text-right">Comprovantes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -702,6 +806,17 @@ export function Financial() {
                               >
                                 {t.status}
                               </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1"
+                                onClick={() => handleOpenAttachments(t)}
+                              >
+                                <Paperclip className="h-3.5 w-3.5 text-primary" />
+                                Anexos
+                              </Button>
                             </td>
                           </tr>
                         )
@@ -1479,6 +1594,169 @@ export function Financial() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: COMPROVANTES MÚLTIPLOS POR LANÇAMENTO */}
+      <Dialog open={isAttachmentsModalOpen} onOpenChange={setIsAttachmentsModalOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Paperclip className="h-5 w-5 text-primary" />
+              Comprovantes e Anexos do Lançamento
+            </DialogTitle>
+            <DialogDescription>
+              Permite anexar múltiplos comprovantes (PDF, notas em XML, imagens de recibos e
+              boletos). Acesso seguro restrito a administradores.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTransactionForAttachments && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 rounded-lg border bg-muted/40 text-xs space-y-1">
+                <p className="font-semibold text-sm text-foreground">
+                  {selectedTransactionForAttachments.description}
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                  <span>
+                    <strong>Tipo:</strong> {selectedTransactionForAttachments.type}
+                  </span>
+                  <span>
+                    <strong>Valor:</strong> {formatBRL(selectedTransactionForAttachments.amount)}
+                  </span>
+                  <span>
+                    <strong>Vencimento:</strong>{' '}
+                    {formatDateBR(selectedTransactionForAttachments.due_date)}
+                  </span>
+                  {selectedTransactionForAttachments.recipient_supplier && (
+                    <span>
+                      <strong>Favorecido:</strong>{' '}
+                      {selectedTransactionForAttachments.recipient_supplier}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Formulário de upload múltiplo */}
+              <form
+                onSubmit={handleUploadTxAttachments}
+                className="p-3 border rounded-lg bg-card space-y-3"
+              >
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5" /> Adicionar Comprovantes (pode selecionar
+                  múltiplos)
+                </Label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    type="file"
+                    multiple
+                    accept=".pdf,.xml,.jpg,.jpeg,.png,.webp"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        setSelectedFilesForTx(Array.from(e.target.files))
+                      }
+                    }}
+                    className="text-xs"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={selectedFilesForTx.length === 0 || uploadingAttachments}
+                    className="shrink-0"
+                  >
+                    {uploadingAttachments ? 'Enviando...' : `Anexar (${selectedFilesForTx.length})`}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Arquivos aceitos: PDF, imagens (JPG, PNG, WEBP) e XML da nota fiscal (máx. 15MB
+                  cada).
+                </p>
+              </form>
+
+              {/* Lista de comprovantes existentes */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold">
+                  Comprovantes Cadastrados ({transactionAttachments.length})
+                </Label>
+                {loadingAttachments ? (
+                  <div className="text-center py-6 text-xs text-muted-foreground">
+                    Carregando comprovantes...
+                  </div>
+                ) : transactionAttachments.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                    Nenhum comprovante anexado a esta despesa / lançamento ainda.
+                  </div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                    {transactionAttachments.map((att) => {
+                      const fileUrl = pb.files.getURL(att, att.file)
+                      const isXml = att.file.toLowerCase().endsWith('.xml')
+                      const isPdf = att.file.toLowerCase().endsWith('.pdf')
+                      const isImg =
+                        att.file.toLowerCase().endsWith('.jpg') ||
+                        att.file.toLowerCase().endsWith('.jpeg') ||
+                        att.file.toLowerCase().endsWith('.png') ||
+                        att.file.toLowerCase().endsWith('.webp')
+                      return (
+                        <div
+                          key={att.id}
+                          className="p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs bg-muted/20 hover:bg-muted/40 transition"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <FileText className="h-4 w-4 text-primary shrink-0" />
+                            <div className="truncate">
+                              <p className="font-medium truncate" title={att.name || att.file}>
+                                {att.name || att.file}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                Enviado em {formatDateBR(att.created, true)} por{' '}
+                                {att.expand?.uploaded_by?.name || 'Administrador'}
+                                {att.file_size ? ` • ${(att.file_size / 1024).toFixed(0)} KB` : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Badge variant="outline" className="text-[9px] uppercase">
+                              {isPdf ? 'PDF' : isXml ? 'XML' : isImg ? 'Imagem' : 'Doc'}
+                            </Badge>
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-medium hover:bg-accent text-foreground"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Abrir
+                            </a>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-red-600"
+                              onClick={() => handleDeleteTxAttachment(att.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAttachmentsModalOpen(false)}
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -257,6 +257,7 @@ export interface SalePaymentRecord {
   updated: string
   expand?: {
     financial_account?: FinancialAccountRecord
+    sale?: SaleRecord
   }
 }
 
@@ -272,6 +273,7 @@ export interface SaleDocumentRecord {
   updated: string
   expand?: {
     uploaded_by?: UserRecord
+    sale?: SaleRecord
   }
 }
 

@@ -138,13 +138,8 @@ const REPORT_DEFINITIONS: ReportMeta[] = [
 ]
 
 export default function Reports() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
   const { toast } = useToast()
-
-  // Se vendedor tentar acessar rota diretamente no cliente
-  if (!isAdmin) {
-    return <Navigate to="/403" replace />
-  }
 
   // Active Report
   const [reportType, setReportType] = useState<ReportTypeId>('vendas')
@@ -181,6 +176,7 @@ export default function Reports() {
 
   // 1. Initial lookup data
   useEffect(() => {
+    if (!isAdmin) return
     const initLookups = async () => {
       try {
         const [stList, prList, uList, catList] = await Promise.all([
@@ -198,7 +194,7 @@ export default function Reports() {
       }
     }
     initLookups()
-  }, [])
+  }, [isAdmin])
 
   // 2. Fetch data based on active report and date bounds
   const loadReportData = async () => {
@@ -256,8 +252,9 @@ export default function Reports() {
   }
 
   useEffect(() => {
+    if (!isAdmin) return
     loadReportData()
-  }, [reportType])
+  }, [reportType, isAdmin])
 
   // Filter Helpers
   const isDateBetween = (dateStr?: string) => {
@@ -269,7 +266,7 @@ export default function Reports() {
   }
 
   // 3. Computed Rows per Report
-  const currentFilteredData = useMemo(() => {
+  const currentFilteredData = useMemo<any[]>(() => {
     switch (reportType) {
       case 'vendas': {
         return salesData.filter((s) => {
@@ -531,6 +528,16 @@ export default function Reports() {
     })
   }
 
+  // Se vendedor tentar acessar rota diretamente no cliente
+  if (!isAdmin) {
+    return <Navigate to="/403" replace />
+  }
+
+  const selectedStoreName =
+    selectedStore === 'all'
+      ? 'Todas as Unidades (Shopping Jockey Plaza & Loja Rua Cajuru)'
+      : stores.find((s) => s.id === selectedStore)?.name || 'Unidade Selecionada'
+
   return (
     <div className="space-y-6">
       {/* HEADER NÃO-IMPRESSÃO */}
@@ -541,13 +548,18 @@ export default function Reports() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Visões consolidadas por período, unidade e filtros específicos. Exportação CSV e
-            impressão em folha A4.
+            impressão em folha A4 / exportação PDF.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4 text-gray-700" /> Imprimir A4 (PDF)
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrint}
+            className="border-gray-300 hover:bg-gray-100"
+          >
+            <Printer className="mr-2 h-4 w-4 text-[#0A8F5C]" /> Imprimir / PDF
           </Button>
           <Button
             size="sm"
@@ -560,27 +572,33 @@ export default function Reports() {
       </div>
 
       {/* PRINT HEADER — EXIBIDO SOMENTE NO @media print */}
-      <div className="hidden print:block mb-6 border-b pb-4">
+      <div className="hidden print:block mb-4 border-b-2 border-black pb-3">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-xl font-bold text-black uppercase">NEW WAY ELETRIC</h1>
-            <p className="text-xs text-gray-600">
-              Unidades: Shopping Jockey Plaza & Rua Cajuru • Curitiba/PR
+            <h1 className="text-lg font-black tracking-wide uppercase text-black">
+              NEW WAY ELETRIC — MOBILIDADE ELÉTRICA
+            </h1>
+            <p className="text-[11px] text-gray-700">
+              Gestão Integrada de Lojas: Shopping Jockey Plaza & Rua Cajuru • Curitiba/PR
             </p>
-            <h2 className="text-base font-semibold mt-2 text-black">{activeDef.title}</h2>
+            <div className="mt-1.5 inline-block border border-gray-400 bg-gray-50 px-2 py-0.5 rounded text-xs font-bold text-black">
+              RELATÓRIO: {activeDef.title.toUpperCase()}
+            </div>
           </div>
-          <div className="text-right text-xs text-gray-600">
+          <div className="text-right text-[11px] text-gray-800 space-y-0.5">
             <p>
-              <strong>Emissão:</strong> {formatDateBR(new Date().toISOString(), true)}
+              <strong>Data/Hora de Geração:</strong> {formatDateBR(new Date().toISOString(), true)}
             </p>
             <p>
-              <strong>Período:</strong> {formatDateBR(startDate)} a {formatDateBR(endDate)}
+              <strong>Usuário Gerador:</strong> {user?.name || user?.email || 'Administrador'}{' '}
+              (Admin)
             </p>
             <p>
-              <strong>Unidade:</strong>{' '}
-              {selectedStore === 'all'
-                ? 'Todas as Unidades'
-                : stores.find((s) => s.id === selectedStore)?.name}
+              <strong>Período Filtrado:</strong> {formatDateBR(startDate)} até{' '}
+              {formatDateBR(endDate)}
+            </p>
+            <p>
+              <strong>Loja / Unidade:</strong> {selectedStoreName}
             </p>
           </div>
         </div>
@@ -1444,6 +1462,18 @@ export default function Reports() {
             </p>
           </div>
         )}
+
+        {/* PRINT FOOTER — EXIBIDO SOMENTE NO @media print */}
+        <div className="hidden print:block mt-8 pt-3 border-t border-gray-400 text-center text-[10px] text-gray-600">
+          <p className="font-semibold text-gray-800">
+            New Way Eletric — documento interno, sem valor fiscal
+          </p>
+          <p className="text-[9px] text-gray-500 mt-0.5">
+            Emitido via Módulo de Relatórios Administrativos • Acesso Restrito à Administração •
+            Gerado em {formatDateBR(new Date().toISOString(), true)} por{' '}
+            {user?.name || user?.email || 'Admin'}
+          </p>
+        </div>
       </Card>
     </div>
   )

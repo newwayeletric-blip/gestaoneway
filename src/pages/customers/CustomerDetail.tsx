@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { CustomersService, SalesService } from '@/services/api'
-import type { CustomerRecord, SaleRecord } from '@/types'
+import type { CustomerRecord, SaleRecord, SaleDocumentRecord } from '@/types'
 import { formatBRL, formatDateBR, formatPhoneBR, formatDocumentBR } from '@/lib/formatters'
+import { pb } from '@/lib/pocketbase/client'
 import {
   User,
   Phone,
@@ -17,6 +18,8 @@ import {
   Save,
   ShieldAlert,
   Loader2,
+  ExternalLink,
+  FileCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,7 +34,9 @@ export default function CustomerDetail() {
   const { isAdmin, user } = useAuth()
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [sales, setSales] = useState<SaleRecord[]>([])
+  const [documents, setDocuments] = useState<SaleDocumentRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadingDocs, setLoadingDocs] = useState(false)
 
   // Edit fields
   const [name, setName] = useState('')
@@ -47,6 +52,7 @@ export default function CustomerDetail() {
   const loadCustomer = async () => {
     if (!id) return
     setIsLoading(true)
+    setLoadingDocs(true)
     try {
       const [cust, custSales] = await Promise.all([
         CustomersService.getById(id),
@@ -61,10 +67,29 @@ export default function CustomerDetail() {
       setEmail(cust.email || '')
       setAddress(cust.address || '')
       setNotes(cust.notes || '')
+
+      // Carregar documentos vinculados às compras do cliente
+      // Respeitar regras de segurança: vendedor vê apenas documentos das vendas que pode consultar
+      try {
+        const docs = await SalesService.getDocumentsByCustomer(id)
+        // Se vendedor, filtrar para garantir que só vê documentos de vendas que ele pode consultar
+        const allowedDocs = isAdmin
+          ? docs
+          : docs.filter(
+              (d) =>
+                !d.expand?.sale ||
+                d.expand.sale.seller === user?.id ||
+                d.expand.sale.store === user?.store,
+            )
+        setDocuments(allowedDocs)
+      } catch (docErr) {
+        console.warn('Erro ao carregar documentos do cliente:', docErr)
+      }
     } catch (err) {
       console.error('Error loading customer:', err)
     } finally {
       setIsLoading(false)
+      setLoadingDocs(false)
     }
   }
 
@@ -306,6 +331,85 @@ export default function CustomerDetail() {
                 </tbody>
               </table>
             </div>
+          </Card>
+
+          {/* SEÇÃO DOCUMENTOS DAS COMPRAS DO CLIENTE */}
+          <Card className="bg-white border-0 shadow-sm rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-base text-[#111111] flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-[#0A8F5C]" /> Documentos & Notas Fiscais (
+                  {documents.length})
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Notas fiscais (PDF/XML), termos de garantia e recibos vinculados às vendas deste
+                  cliente. Armazenamento privado autenticado.
+                </p>
+              </div>
+            </div>
+
+            {loadingDocs ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                Carregando documentos...
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="py-8 text-center text-gray-400 text-xs border border-dashed rounded-lg">
+                Nenhum documento ou nota fiscal anexada às vendas deste cliente até o momento.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {documents.map((docItem) => {
+                  const fileUrl = pb.files.getURL(docItem, docItem.file)
+                  const isXml = docItem.file?.toLowerCase().endsWith('.xml')
+                  const isPdf = docItem.file?.toLowerCase().endsWith('.pdf')
+                  return (
+                    <div
+                      key={docItem.id}
+                      className="p-3 rounded-lg border border-gray-100 bg-gray-50/60 hover:bg-gray-100/70 transition flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <FileCheck className="h-5 w-5 text-[#0A8F5C] shrink-0 mt-0.5" />
+                        <div className="truncate">
+                          <p className="font-semibold text-gray-900 truncate">
+                            {docItem.label || docItem.file}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[11px] text-gray-500">
+                            {docItem.expand?.sale && (
+                              <Link
+                                to={`/vendas/${docItem.expand.sale.id}`}
+                                className="font-mono text-[#0A8F5C] hover:underline"
+                              >
+                                Venda {docItem.expand.sale.number}
+                              </Link>
+                            )}
+                            <Badge variant="outline" className="text-[9px] uppercase px-1 py-0">
+                              {docItem.doc_type?.replace('_', ' ') ||
+                                (isPdf ? 'PDF' : isXml ? 'XML' : 'Documento')}
+                            </Badge>
+                            <span>Enviado em {formatDateBR(docItem.created)}</span>
+                            {docItem.expand?.uploaded_by && (
+                              <span>por {docItem.expand.uploaded_by.name}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        <a
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-white border border-gray-200 text-gray-800 hover:bg-gray-50 shadow-sm"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 text-[#0A8F5C]" />
+                          Abrir Arquivo
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </Card>
         </div>
       </div>
