@@ -27,6 +27,9 @@ import type {
   MonthlyClosingRecord,
   AuditLogRecord,
   TransactionAttachmentRecord,
+  OrganizationRecord,
+  LegalEntityRecord,
+  FranchiseSummary,
 } from '@/types'
 
 export const StoresService = {
@@ -46,6 +49,58 @@ export const StoresService = {
 
   async update(id: string, data: Partial<StoreRecord>): Promise<StoreRecord> {
     return await pb.collection('stores').update<StoreRecord>(id, data)
+  },
+}
+
+export type LegalEntityInput = Omit<LegalEntityRecord, 'id' | 'org' | 'active'>
+
+export interface NewFranchisePayload {
+  organization: { name: string; region: string }
+  legal_entity: LegalEntityInput
+  stores: { name: string; address: string; phone: string; whatsapp: string }[]
+  owner: { name: string; email: string; password: string }
+}
+
+// Rede de franquias (FRQ-01): só o admin da rede. A lista e o cadastro passam
+// por rotas do servidor; os ajustes usam a API comum, que já permite ao admin
+// da rede editar organização, CNPJ e lojas de uma franquia.
+export const NetworkService = {
+  async listFranchises(): Promise<FranchiseSummary[]> {
+    const res = await pb.send<{ items: FranchiseSummary[] }>('/backend/v1/network/franchises', {
+      method: 'GET',
+    })
+    return res.items
+  },
+
+  async createFranchise(payload: NewFranchisePayload) {
+    return await pb.send<{
+      organization: string
+      legal_entity: string
+      stores: string[]
+      owner: string
+    }>('/backend/v1/network/franchises', { method: 'POST', body: payload })
+  },
+
+  async updateFranchise(
+    id: string,
+    data: { name: string; region: string; status: OrganizationRecord['status'] },
+  ): Promise<OrganizationRecord> {
+    return await pb.collection('organizations').update<OrganizationRecord>(id, data)
+  },
+
+  async addLegalEntity(org: string, data: LegalEntityInput): Promise<LegalEntityRecord> {
+    return await pb
+      .collection('legal_entities')
+      .create<LegalEntityRecord>({ ...data, org, active: true })
+  },
+
+  async updateLegalEntity(id: string, data: LegalEntityInput): Promise<LegalEntityRecord> {
+    return await pb.collection('legal_entities').update<LegalEntityRecord>(id, data)
+  },
+
+  async addStore(org: string, data: Partial<StoreRecord>): Promise<StoreRecord> {
+    // O identificador (slug) e a situação "ativa" vêm do servidor (stores_defaults.js).
+    return await pb.collection('stores').create<StoreRecord>({ ...data, org })
   },
 }
 

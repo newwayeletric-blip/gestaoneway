@@ -77,6 +77,40 @@ export function normalizeDocument(doc: string | undefined | null): string {
   return doc.replace(/\D/g, '')
 }
 
+// CNPJ-01: mesma conferência do servidor (pocketbase/hooks/legal_entities_validate.js),
+// incluindo o CNPJ alfanumérico: letras valem (código ASCII − 48) no cálculo.
+export function isValidCnpj(value: string | undefined | null): boolean {
+  const cnpj = (value || '').toUpperCase().replace(/[^0-9A-Z]/g, '')
+  if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false
+  const checkDigit = (base: string, weights: number[]) => {
+    const sum = weights.reduce((acc, w, i) => acc + (base.charCodeAt(i) - 48) * w, 0)
+    const rest = sum % 11
+    return rest < 2 ? 0 : 11 - rest
+  }
+  const d1 = checkDigit(cnpj, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  const d2 = checkDigit(cnpj.slice(0, 12) + d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  return cnpj[12] === String(d1) && cnpj[13] === String(d2)
+}
+
+// Máscara enquanto digita: 00.000.000/0000-00 (aceita letras nas 12 primeiras posições).
+export function maskCnpj(raw: string): string {
+  const v = raw
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '')
+    .slice(0, 14)
+  let out = v.slice(0, 2)
+  if (v.length > 2) out += '.' + v.slice(2, 5)
+  if (v.length > 5) out += '.' + v.slice(5, 8)
+  if (v.length > 8) out += '/' + v.slice(8, 12)
+  if (v.length > 12) out += '-' + v.slice(12)
+  return out
+}
+
+export function maskCep(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits
+}
+
 export function formatDocumentBR(doc: string | undefined | null): string {
   if (!doc) return '-'
   // Letras ficam: o CNPJ alfanumérico (Receita, a partir de 07/2026) tem letras nas 12 primeiras posições.

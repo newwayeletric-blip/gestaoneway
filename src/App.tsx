@@ -39,6 +39,9 @@ import Stock from '@/pages/stock/Stock'
 import CustomersList from '@/pages/customers/CustomersList'
 import CustomerDetail from '@/pages/customers/CustomerDetail'
 
+// Rede de franquias (admin da rede)
+import Franchises from '@/pages/network/Franchises'
+
 const queryClient = new QueryClient()
 
 // Helper to redirect root `/` to appropriate home
@@ -91,6 +94,11 @@ export default function App() {
                     <Route path="/meu-painel" element={<SellerDashboard />} />
                     <Route path="/minhas-vendas" element={<SalesList mySalesOnly={true} />} />
                     <Route path="/minhas-comissoes" element={<MyCommissions />} />
+                  </Route>
+
+                  {/* NETWORK ADMIN ROUTES */}
+                  <Route element={<ProtectedRoute requiredNetworkRole="admin_rede" />}>
+                    <Route path="/franquias" element={<Franchises />} />
                   </Route>
 
                   {/* COMMON ACCESSIBLE ROUTES (with internal role checks) */}

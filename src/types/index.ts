@@ -30,6 +30,52 @@ export interface OrganizationRecord {
   updated: string
 }
 
+export interface LegalEntityAddress {
+  cep?: string
+  logradouro?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  municipio?: string
+  ibge?: string
+  uf?: string
+}
+
+export type TaxRegime = 'mei' | 'simples_nacional' | 'lucro_presumido' | 'lucro_real'
+
+// Empresa (CNPJ) de uma organização (CNPJ-01).
+export interface LegalEntityRecord {
+  id: string
+  org?: string
+  razao_social: string
+  nome_fantasia?: string
+  cnpj: string // sem pontuação
+  matriz_filial?: 'matriz' | 'filial' | ''
+  regime?: TaxRegime | ''
+  ie?: string
+  ie_isento?: boolean
+  address?: LegalEntityAddress | null
+  fiscal_email?: string
+  accountant_contact?: string
+  active?: boolean
+}
+
+// Cadastro de uma franquia como o admin da rede vê
+// (GET /backend/v1/network/franchises): sem vendas, clientes nem financeiro.
+export interface FranchiseSummary {
+  id: string
+  name: string
+  status: OrganizationRecord['status']
+  region: string
+  created: string
+  legal_entities: LegalEntityRecord[]
+  stores: Pick<
+    StoreRecord,
+    'id' | 'name' | 'slug' | 'address' | 'phone' | 'whatsapp' | 'status' | 'legal_entity'
+  >[]
+  admins: { id: string; name: string; email: string; status: UserStatus }[]
+}
+
 export interface StoreRecord {
   id: string
   name: string

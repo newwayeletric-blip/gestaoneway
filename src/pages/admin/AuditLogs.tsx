@@ -139,6 +139,8 @@ export function AuditLogs() {
         return 'Comissões'
       case 'monthly_closings':
         return 'Fechamento Mensal'
+      case 'organizations':
+        return 'Franquias'
       default:
         return entity
     }
@@ -185,6 +187,7 @@ export function AuditLogs() {
                   <SelectItem value="financial_transactions">Financeiro & Despesas</SelectItem>
                   <SelectItem value="commissions">Comissões</SelectItem>
                   <SelectItem value="monthly_closings">Fechamento Mensal</SelectItem>
+                  <SelectItem value="organizations">Franquias</SelectItem>
                 </SelectContent>
               </Select>
             </div>

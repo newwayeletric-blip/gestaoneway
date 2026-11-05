@@ -22,6 +22,7 @@ import {
   Store as StoreIcon,
   Zap,
   ChevronDown,
+  Building2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -99,6 +100,19 @@ export default function Layout() {
 
   const menuItems = isAdmin ? adminMenuItems : sellerMenuItems
 
+  // Admin da rede (PER-01, D.3): grupo "Rede" no topo, antes do menu da
+  // organização dele. Os demais usuários veem o menu sem grupos.
+  const menuSections =
+    user?.network_role === 'admin_rede'
+      ? [
+          {
+            title: 'Rede New Way',
+            items: [{ label: 'Franquias', path: '/franquias', icon: Building2 }],
+          },
+          { title: organization?.name || 'Minha organização', items: menuItems },
+        ]
+      : [{ title: '', items: menuItems }]
+
   // Active Store object
   const activeStore = stores.find((s) => s.id === activeStoreId) || stores[0]
 
@@ -125,6 +139,7 @@ export default function Layout() {
       return isAdmin ? 'Gestão de Comissões' : 'Minhas Comissões'
     if (path === '/relatorios') return 'Relatórios Gerenciais'
     if (path === '/auditoria') return 'Trilha de Auditoria'
+    if (path === '/franquias') return 'Rede de Franquias'
     if (path === '/usuarios') return 'Colaboradores & Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'
     if (path === '/dashboard') return 'Dashboard Geral'
@@ -167,28 +182,37 @@ export default function Layout() {
 
         {/* NAVIGATION LINKS */}
         <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            const isActive =
-              location.pathname === item.path ||
-              (item.path !== '/' && location.pathname.startsWith(item.path + '/'))
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive: active }) =>
-                  `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    active || isActive
-                      ? 'bg-[#0A8F5C] text-white shadow-sm'
-                      : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                  }`
-                }
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </NavLink>
-            )
-          })}
+          {menuSections.map((section) => (
+            <div key={section.title} className="space-y-1 pt-3 first:pt-0">
+              {section.title && (
+                <p className="px-3.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  {section.title}
+                </p>
+              )}
+              {section.items.map((item) => {
+                const Icon = item.icon
+                const isActive =
+                  location.pathname === item.path ||
+                  (item.path !== '/' && location.pathname.startsWith(item.path + '/'))
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive: active }) =>
+                      `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        active || isActive
+                          ? 'bg-[#0A8F5C] text-white shadow-sm'
+                          : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                      }`
+                    }
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* FOOTER USER / LOGOUT */}
@@ -237,24 +261,33 @@ export default function Layout() {
             </div>
 
             <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-              {menuItems.map((item) => {
-                const Icon = item.icon
-                const isActive =
-                  location.pathname === item.path ||
-                  (item.path !== '/' && location.pathname.startsWith(item.path + '/'))
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={`flex items-center gap-3 px-3.5 py-3 rounded-lg text-sm font-medium transition-colors ${
-                      isActive ? 'bg-[#0A8F5C] text-white' : 'text-gray-300 hover:bg-white/10'
-                    }`}
-                  >
-                    <Icon className="h-5 w-5 shrink-0" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                )
-              })}
+              {menuSections.map((section) => (
+                <div key={section.title} className="space-y-1 pt-3 first:pt-0">
+                  {section.title && (
+                    <p className="px-3.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                      {section.title}
+                    </p>
+                  )}
+                  {section.items.map((item) => {
+                    const Icon = item.icon
+                    const isActive =
+                      location.pathname === item.path ||
+                      (item.path !== '/' && location.pathname.startsWith(item.path + '/'))
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-3 px-3.5 py-3 rounded-lg text-sm font-medium transition-colors ${
+                          isActive ? 'bg-[#0A8F5C] text-white' : 'text-gray-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5 shrink-0" />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    )
+                  })}
+                </div>
+              ))}
             </nav>
 
             <div className="p-4 border-t border-white/10 flex items-center justify-between">

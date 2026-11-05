@@ -6,9 +6,14 @@ import { Loader2 } from 'lucide-react'
 
 interface ProtectedRouteProps {
   requiredProfile?: 'admin' | 'vendedor'
+  // Papel na franqueadora (PER-01), independente do perfil na loja.
+  requiredNetworkRole?: 'admin_rede'
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredProfile }) => {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  requiredProfile,
+  requiredNetworkRole,
+}) => {
   const { user, profile, isLoading, hasAnyAdmin } = useAuth()
 
   if (isLoading) {
@@ -40,6 +45,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredProfile 
   // Profile check
   if (requiredProfile && profile !== requiredProfile) {
     // If route requires admin and user is vendedor -> 403 Forbidden
+    return <Forbidden />
+  }
+
+  if (requiredNetworkRole && user.network_role !== requiredNetworkRole) {
     return <Forbidden />
   }
 
