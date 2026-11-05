@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
-import type { UserRecord, StoreRecord } from '@/types'
+import type { UserRecord, StoreRecord, OrganizationRecord } from '@/types'
 import { StoresService } from '@/services/api'
 
 interface AuthContextType {
@@ -17,6 +17,7 @@ interface AuthContextType {
   refreshUser: () => Promise<void>
   hasAnyAdmin: boolean | null
   checkHasAnyAdmin: () => Promise<boolean>
+  organization: OrganizationRecord | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -31,26 +32,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return localStorage.getItem('nwe_active_store_id') || ''
   })
   const [hasAnyAdmin, setHasAnyAdmin] = useState<boolean | null>(null)
+  const [organization, setOrganization] = useState<OrganizationRecord | null>(null)
+
+  // Organização do usuário (franquia ou lojas próprias), mostrada no topo (ESC-03).
+  useEffect(() => {
+    if (!user?.org) {
+      setOrganization(null)
+      return
+    }
+    pb.collection('organizations')
+      .getOne<OrganizationRecord>(user.org)
+      .then(setOrganization)
+      .catch(() => setOrganization(null))
+  }, [user?.org])
 
   const checkHasAnyAdmin = async (): Promise<boolean> => {
+    // Visitantes não listam usuários; o servidor diz se a instalação inicial
+    // ainda está aberta (USR-01). Na dúvida, trata como já instalado.
     try {
-      const admins = await pb.collection('users').getList(1, 1, {
-        filter: "profile = 'admin' && status != 'inativo'",
+      const res = await pb.send<{ available: boolean }>('/backend/v1/setup/status', {
+        method: 'GET',
       })
-      const exists = admins.totalItems > 0
+      const exists = !res.available
       setHasAnyAdmin(exists)
       return exists
     } catch {
-      // If error (or 403 because unauthenticated), try list without filter or count
-      try {
-        const anyUser = await pb.collection('users').getList(1, 1)
-        const exists = anyUser.totalItems > 0
-        setHasAnyAdmin(exists)
-        return exists
-      } catch {
-        setHasAnyAdmin(false)
-        return false
-      }
+      setHasAnyAdmin(true)
+      return true
     }
   }
 
@@ -160,6 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshUser,
         hasAnyAdmin,
         checkHasAnyAdmin,
+        organization,
       }}
     >
       {children}

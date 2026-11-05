@@ -277,7 +277,7 @@ export default function UsersList() {
                               key={sId}
                               className="px-1.5 py-0.5 rounded bg-gray-100 text-[10px]"
                             >
-                              {st?.name?.includes('Jockey') ? 'Jockey' : 'Cajuru'}
+                              {st?.name || '—'}
                             </span>
                           )
                         })}
@@ -359,7 +359,7 @@ export default function UsersList() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="lucas@newwayeletric.com.br"
+                placeholder="nome@empresa.com.br"
                 required
                 disabled={!!editingUser}
               />
@@ -426,10 +426,7 @@ export default function UsersList() {
                         onChange={() => toggleStore(s.id)}
                         className="rounded border-gray-300 text-[#0A8F5C] focus:ring-[#0A8F5C]"
                       />
-                      <span>
-                        {s.name} ({s.slug === 'jockey-plaza' ? 'Shopping Jockey' : 'Oficina Cajuru'}
-                        )
-                      </span>
+                      <span>{s.name}</span>
                     </label>
                   ))}
                 </div>

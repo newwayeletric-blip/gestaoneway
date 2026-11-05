@@ -191,9 +191,7 @@ export default function SellerDashboard() {
                     <td className="py-3 px-3 text-gray-800">
                       {s.expand?.customer?.name || 'Cliente'}
                     </td>
-                    <td className="py-3 px-3 text-gray-500">
-                      {s.expand?.store?.name?.includes('Jockey') ? 'Jockey' : 'Cajuru'}
-                    </td>
+                    <td className="py-3 px-3 text-gray-500">{s.expand?.store?.name || '—'}</td>
                     <td className="py-3 px-3 font-semibold text-[#0A8F5C]">{formatBRL(s.total)}</td>
                     <td className="py-3 px-3">
                       <Badge
@@ -248,11 +246,7 @@ export default function SellerDashboard() {
                   <p className="font-semibold text-xs text-[#111111] leading-tight">
                     {stk.expand?.product?.name}
                   </p>
-                  <p className="text-[11px] text-gray-500">
-                    {stk.expand?.store?.name?.includes('Jockey')
-                      ? 'Shopping Jockey'
-                      : 'Oficina Cajuru'}
-                  </p>
+                  <p className="text-[11px] text-gray-500">{stk.expand?.store?.name || '—'}</p>
                 </div>
                 <div className="text-right">
                   <span className="inline-block px-2 py-0.5 rounded bg-amber-200 text-amber-900 text-xs font-bold">

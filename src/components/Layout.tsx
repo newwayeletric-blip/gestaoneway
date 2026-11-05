@@ -45,6 +45,7 @@ export default function Layout() {
     activeStoreId,
     setActiveStoreId,
     authorizedStores,
+    organization,
   } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [lowStockCount, setLowStockCount] = useState<number>(0)
@@ -301,17 +302,18 @@ export default function Layout() {
                 >
                   <StoreIcon className="h-4 w-4 text-[#0A8F5C]" />
                   <span className="hidden sm:inline font-semibold">
+                    {organization ? `${organization.name} · ` : ''}
                     {activeStore?.name || 'Selecione a Loja'}
                   </span>
-                  <span className="sm:hidden font-semibold">
-                    {activeStore?.name?.includes('Jockey') ? 'Jockey' : 'Cajuru'}
+                  <span className="sm:hidden font-semibold max-w-[110px] truncate">
+                    {activeStore?.name || 'Loja'}
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-white shadow-lg border-gray-200">
                 <DropdownMenuLabel className="text-xs text-gray-500">
-                  Unidade Operacional
+                  {organization?.name || 'Unidade Operacional'}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {authorizedStores.map((st) => (
@@ -323,11 +325,11 @@ export default function Layout() {
                     }`}
                   >
                     <span>{st.name}</span>
-                    <span className="text-[10px] text-gray-500 font-normal truncate max-w-full">
-                      {st.slug === 'jockey-plaza'
-                        ? 'Shopping Jockey Plaza - Piso L2'
-                        : 'Cajuru - Oficina Home Lithium'}
-                    </span>
+                    {st.address && (
+                      <span className="text-[10px] text-gray-500 font-normal truncate max-w-full">
+                        {st.address}
+                      </span>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>

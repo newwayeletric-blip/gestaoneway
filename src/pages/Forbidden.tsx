@@ -27,7 +27,7 @@ export default function Forbidden() {
         Você não tem permissão para acessar este módulo
       </h1>
       <p className="mt-2 max-w-md text-sm text-gray-600">
-        Esta rota é de uso restrito à administração da New Way Eletric. Dados de custos, margens,
+        Esta rota é de uso restrito à administração da organização. Dados de custos, margens,
         configurações gerenciais e exclusões de registros são protegidos no servidor.
       </p>
       <div className="mt-6 flex gap-3">

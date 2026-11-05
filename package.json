@@ -14,8 +14,8 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "preview": "vite preview",
-    "test": "echo \"there are no tests for this project\" && exit 0",
-    "test:watch": "echo \"there are no tests for this project\" && exit 0"
+    "test": "node --test --test-concurrency=1 \"tests/api/*.test.mjs\"",
+    "test:watch": "node --test --watch --test-concurrency=1 \"tests/api/*.test.mjs\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

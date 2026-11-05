@@ -121,7 +121,7 @@ export default function MyCommissions() {
                     {c.expand?.sale?.number || 'Venda'}
                   </td>
                   <td className="py-3 px-3 text-gray-600">
-                    {c.expand?.store?.name?.includes('Jockey') ? 'Shopping Jockey' : 'Loja de rua'}
+                    {c.expand?.store?.name || '—'}
                   </td>
                   <td className="py-3 px-3 text-gray-600">{formatBRL(c.base_amount)}</td>
                   <td className="py-3 px-3 font-mono">{c.rate}%</td>

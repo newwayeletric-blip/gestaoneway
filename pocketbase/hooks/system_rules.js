@@ -22,6 +22,10 @@ onRecordCreateRequest((e) => {
     let filter = `year = ${year} && month = ${month} && status = 'fechado'`
     if (storeId) {
       filter += ` && (store = '${storeId}' || store = '' || store = null)`
+      // Só vale o fechamento da organização da loja (cada franquia fecha o seu mês).
+      try {
+        filter += ` && org = '${e.app.findRecordById('stores', storeId).getString('org')}'`
+      } catch (_) {}
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
@@ -46,7 +50,7 @@ onRecordUpdateRequest((e) => {
     if (!isNaN(d.getTime())) {
       const year = d.getUTCFullYear()
       const month = d.getUTCMonth() + 1
-      let filter = `year = ${year} && month = ${month} && status = 'fechado'`
+      let filter = `year = ${year} && month = ${month} && status = 'fechado' && org = '${original.getString('org')}'`
       if (storeId) {
         filter += ` && (store = '${storeId}' || store = '' || store = null)`
       }
@@ -65,10 +69,12 @@ onRecordUpdateRequest((e) => {
 onRecordCreateRequest((e) => {
   const saleId = e.record.get('sale')
   let storeId = null
+  let orgId = ''
   let saleDate = new Date().toISOString()
   try {
     const sale = e.app.findRecordById('sales', saleId)
     storeId = sale.get('store')
+    orgId = sale.getString('org')
     saleDate = sale.get('date')
   } catch (_) {}
 
@@ -76,7 +82,7 @@ onRecordCreateRequest((e) => {
   if (!isNaN(d.getTime())) {
     const year = d.getUTCFullYear()
     const month = d.getUTCMonth() + 1
-    let filter = `year = ${year} && month = ${month} && status = 'fechado'`
+    let filter = `year = ${year} && month = ${month} && status = 'fechado' && org = '${orgId}'`
     if (storeId) {
       filter += ` && (store = '${storeId}' || store = '' || store = null)`
     }
@@ -103,9 +109,14 @@ onRecordCreateRequest((e) => {
     const year = d.getUTCFullYear()
     const month = d.getUTCMonth() + 1
     let filter = `year = ${year} && month = ${month} && status = 'fechado'`
+    let orgId = e.auth ? e.auth.getString('org') : ''
     if (storeId) {
       filter += ` && (store = '${storeId}' || store = '' || store = null)`
+      try {
+        orgId = e.app.findRecordById('stores', storeId).getString('org')
+      } catch (_) {}
     }
+    filter += ` && org = '${orgId}'`
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {
       throw new BadRequestError(
@@ -134,7 +145,7 @@ onRecordUpdateRequest((e) => {
     if (!isNaN(d.getTime())) {
       const year = d.getUTCFullYear()
       const month = d.getUTCMonth() + 1
-      let filter = `year = ${year} && month = ${month} && status = 'fechado'`
+      let filter = `year = ${year} && month = ${month} && status = 'fechado' && org = '${original.getString('org')}'`
       if (storeId) {
         filter += ` && (store = '${storeId}' || store = '' || store = null)`
       }
@@ -160,6 +171,9 @@ onRecordCreateRequest((e) => {
     let filter = `year = ${year} && month = ${month} && status = 'fechado'`
     if (storeId) {
       filter += ` && (store = '${storeId}' || store = '' || store = null)`
+      try {
+        filter += ` && org = '${e.app.findRecordById('stores', storeId).getString('org')}'`
+      } catch (_) {}
     }
     const closings = e.app.findRecordsByFilter('monthly_closings', filter, '-created', 1, 0)
     if (closings && closings.length > 0) {

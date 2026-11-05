@@ -26,7 +26,7 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react'
-import { pb } from '@/lib/pocketbase/client'
+import { openProtectedFile } from '@/lib/pocketbase/client'
 import { FinancialService, StoresService } from '@/services/api'
 import type {
   FinancialAccountRecord,
@@ -100,10 +100,8 @@ export function Financial() {
   const [transDescription, setTransDescription] = useState('')
   const [transType, setTransType] = useState<FinancialTransactionType>('despesa')
   const [transCategory, setTransCategory] = useState('')
+  // Loja do lançamento (id) ou 'compartilhado' para despesa dividida entre as lojas.
   const [transStore, setTransStore] = useState('')
-  const [transStoreAllocation, setTransStoreAllocation] = useState<
-    'jockey' | 'cajuru' | 'compartilhado'
-  >('jockey')
   const [transAccount, setTransAccount] = useState('')
   const [transAmount, setTransAmount] = useState<number>(0)
   const [transCompetence, setTransCompetence] = useState(new Date().toISOString().split('T')[0])
@@ -390,6 +388,11 @@ export function Financial() {
     }
 
     setIsSavingTrans(true)
+    const isShared = transStore === 'compartilhado'
+    const storeFields = {
+      store: isShared ? undefined : transStore || undefined,
+      store_allocation: isShared ? ('compartilhado' as const) : undefined,
+    }
     try {
       // If single installment
       if (transInstallments <= 1) {
@@ -397,8 +400,7 @@ export function Financial() {
           description: transDescription,
           type: transType,
           category: transCategory || undefined,
-          store: transStore || undefined,
-          store_allocation: transStoreAllocation,
+          ...storeFields,
           account: transAccount || undefined,
           amount: transAmount,
           competence_date: transCompetence,
@@ -437,8 +439,7 @@ export function Financial() {
             description: `${transDescription} (${i}/${transInstallments})`,
             type: transType,
             category: transCategory || undefined,
-            store: transStore || undefined,
-            store_allocation: transStoreAllocation,
+            ...storeFields,
             account: transAccount || undefined,
             amount: instVal,
             competence_date: transCompetence,
@@ -772,7 +773,7 @@ export function Financial() {
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-xs text-muted-foreground">
-                              {t.expand?.store?.name || t.store_allocation || 'Compartilhado'}
+                              {t.expand?.store?.name || 'Compartilhado'}
                             </td>
                             <td className="py-2.5 px-3 text-xs">
                               {formatDateBR(t.competence_date)}
@@ -1091,7 +1092,7 @@ export function Financial() {
                       <div className="text-right">
                         <p className="font-bold text-base text-red-600">{formatBRL(rec.amount)}</p>
                         <Badge variant="outline" className="text-[10px]">
-                          {rec.store_allocation}
+                          {rec.expand?.store?.name || 'Compartilhado'}
                         </Badge>
                       </div>
                     </div>
@@ -1110,8 +1111,8 @@ export function Financial() {
                 Rateios de Despesas Compartilhadas
               </CardTitle>
               <CardDescription>
-                Define a distribuição percentual entre as lojas Shopping Jockey Plaza e Loja Rua
-                Cajuru (Total deve ser 100%)
+                Define a distribuição percentual das despesas compartilhadas entre as lojas (o
+                total deve ser 100%)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1162,7 +1163,7 @@ export function Financial() {
                   required
                   value={transDescription}
                   onChange={(e) => setTransDescription(e.target.value)}
-                  placeholder="Ex: Aluguel Loja Jockey Plaza, Conta Copel..."
+                  placeholder="Ex.: aluguel da loja, conta de energia..."
                   className="mt-1"
                 />
               </div>
@@ -1263,16 +1264,16 @@ export function Financial() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Unidade / Alocação</Label>
-                  <Select
-                    value={transStoreAllocation}
-                    onValueChange={(v) => setTransStoreAllocation(v as any)}
-                  >
+                  <Select value={transStore} onValueChange={setTransStore}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="jockey">Shopping Jockey Plaza</SelectItem>
-                      <SelectItem value="cajuru">Loja Rua Cajuru</SelectItem>
+                      {stores.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
                       <SelectItem value="compartilhado">Compartilhado (Rateio)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1689,7 +1690,6 @@ export function Financial() {
                 ) : (
                   <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
                     {transactionAttachments.map((att) => {
-                      const fileUrl = pb.files.getURL(att, att.file)
                       const isXml = att.file.toLowerCase().endsWith('.xml')
                       const isPdf = att.file.toLowerCase().endsWith('.pdf')
                       const isImg =
@@ -1721,9 +1721,11 @@ export function Financial() {
                               {isPdf ? 'PDF' : isXml ? 'XML' : isImg ? 'Imagem' : 'Doc'}
                             </Badge>
                             <a
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href="#"
+                              onClick={(ev) => {
+                                ev.preventDefault()
+                                openProtectedFile(att, att.file).catch(console.error)
+                              }}
                               className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-medium hover:bg-accent text-foreground"
                             >
                               <ExternalLink className="h-3 w-3" />

@@ -14,6 +14,18 @@ export interface UserRecord {
   default_commission_rate?: number
   created_by?: string
   verified?: boolean
+  org?: string // Organização do usuário (preenchida pelo servidor)
+  network_role?: 'admin_rede' | 'financeiro_rede' | 'consultor' | 'catalogo' | ''
+  created: string
+  updated: string
+}
+
+export interface OrganizationRecord {
+  id: string
+  name: string
+  type: 'rede' | 'propria' | 'franquia'
+  status: 'implantacao' | 'ativa' | 'suspensa' | 'encerrada'
+  region?: string
   created: string
   updated: string
 }
@@ -27,6 +39,8 @@ export interface StoreRecord {
   whatsapp?: string
   manager?: string
   status?: 'ativa' | 'inativa'
+  org?: string
+  legal_entity?: string // CNPJ atual da loja
   created: string
   updated: string
 }
@@ -394,6 +408,7 @@ export interface FinancialTransactionRecord {
   type: FinancialTransactionType
   category?: string
   store?: string
+  // 'jockey' e 'cajuru' só existem em lançamentos antigos; hoje a loja vai em `store`.
   store_allocation?: 'jockey' | 'cajuru' | 'compartilhado'
   account?: string
   destination_account?: string

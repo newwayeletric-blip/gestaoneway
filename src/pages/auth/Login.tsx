@@ -65,7 +65,7 @@ export default function Login() {
           </div>
           <CardTitle className="text-2xl font-bold text-[#111111]">NEW WAY ELETRIC</CardTitle>
           <CardDescription className="text-gray-500 text-sm">
-            Gestão Interna • Shopping Jockey Plaza & Cajuru
+            Sistema de gestão da rede New Way
           </CardDescription>
         </CardHeader>
         <CardContent>

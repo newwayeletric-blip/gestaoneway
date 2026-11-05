@@ -650,23 +650,12 @@ export const SalesService = {
     }
 
     // Notice: Delivery DOES NOT generate another stock decrement. Stock is decremented on confirmation only.
-    const updated = await pb.collection('sales').update<SaleRecord>(saleId, {
+    // A auditoria é gravada pelo servidor (pocketbase/hooks/audit_sales_status.js).
+    return await pb.collection('sales').update<SaleRecord>(saleId, {
       delivery_status: 'entregue',
       delivered_at: new Date().toISOString(),
       delivered_by: deliveredByUserId,
     })
-
-    // Audit log
-    await pb.collection('audit_logs').create({
-      entity: 'sales',
-      record_id: saleId,
-      action: 'alteracao',
-      user: deliveredByUserId,
-      reason: 'Registro de entrega do produto ao cliente',
-      new_values: { delivery_status: 'entregue', delivered_at: new Date().toISOString() },
-    })
-
-    return updated
   },
 
   async cancelSale(saleId: string, reason: string, adminUserId: string) {
@@ -743,17 +732,7 @@ export const SalesService = {
       performed_by: adminUserId,
     })
 
-    // Audit log
-    await pb.collection('audit_logs').create({
-      entity: 'sales',
-      record_id: saleId,
-      action: 'cancelamento',
-      user: adminUserId,
-      reason,
-      previous_values: { status: sale.status },
-      new_values: { status: 'cancelada', cancellation_reason: reason },
-    })
-
+    // Auditoria gravada pelo servidor (audit_sales_status.js e system_rules.js).
     return updated
   },
 
@@ -923,16 +902,7 @@ export const SalesService = {
       }
     }
 
-    // Audit log
-    await pb.collection('audit_logs').create({
-      entity: 'sales',
-      record_id: saleId,
-      action: 'devolucao',
-      user: data.performed_by,
-      reason: data.reason,
-      new_values: { return_id: returnRec.id, refund_amount: data.refund_amount, type: data.type },
-    })
-
+    // Auditoria da devolução gravada pelo servidor (system_rules.js, sale_returns).
     return returnRec
   },
 }
@@ -1025,17 +995,7 @@ export const CommissionsService = {
       }
     }
 
-    // Audit log
-    await pb.collection('audit_logs').create({
-      entity: 'commissions',
-      record_id: commissionId,
-      action: 'alteracao',
-      user: adminUserId,
-      reason: `Pagamento de comissão no valor de R$ ${comm.value.toFixed(2)}`,
-      previous_values: { status: comm.status },
-      new_values: { status: 'paga', paid_at: new Date().toISOString(), account: accountId },
-    })
-
+    // Auditoria do pagamento gravada pelo servidor (system_rules.js, commissions).
     return updatedComm
   },
 }
@@ -1314,25 +1274,13 @@ export const FinancialService = {
   },
 
   async reopenMonth(closingId: string, reason: string, userId: string) {
-    const closing = await pb.collection('monthly_closings').getOne<MonthlyClosingRecord>(closingId)
-    const updated = await pb.collection('monthly_closings').update(closingId, {
+    // Auditoria da reabertura gravada pelo servidor (system_rules.js, monthly_closings).
+    return await pb.collection('monthly_closings').update(closingId, {
       status: 'aberto',
       reopened_by: userId,
       reopened_at: new Date().toISOString(),
       reopen_reason: reason,
     })
-
-    await pb.collection('audit_logs').create({
-      entity: 'monthly_closings',
-      record_id: closingId,
-      action: 'reabertura',
-      user: userId,
-      reason,
-      previous_values: { status: 'fechado', year: closing.year, month: closing.month },
-      new_values: { status: 'aberto' },
-    })
-
-    return updated
   },
 
   // Audit Logs

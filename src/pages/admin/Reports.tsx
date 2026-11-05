@@ -138,7 +138,7 @@ const REPORT_DEFINITIONS: ReportMeta[] = [
 ]
 
 export default function Reports() {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, organization } = useAuth()
   const { toast } = useToast()
 
   // Active Report
@@ -535,7 +535,7 @@ export default function Reports() {
 
   const selectedStoreName =
     selectedStore === 'all'
-      ? 'Todas as Unidades (Shopping Jockey Plaza & Loja Rua Cajuru)'
+      ? `Todas as unidades (${stores.map((s) => s.name).join(', ')})`
       : stores.find((s) => s.id === selectedStore)?.name || 'Unidade Selecionada'
 
   return (
@@ -579,7 +579,8 @@ export default function Reports() {
               NEW WAY ELETRIC — MOBILIDADE ELÉTRICA
             </h1>
             <p className="text-[11px] text-gray-700">
-              Gestão Integrada de Lojas: Shopping Jockey Plaza & Rua Cajuru • Curitiba/PR
+              {organization ? `${organization.name} • ` : ''}Lojas:{' '}
+              {stores.map((s) => s.name).join(', ')}
             </p>
             <div className="mt-1.5 inline-block border border-gray-400 bg-gray-50 px-2 py-0.5 rounded text-xs font-bold text-black">
               RELATÓRIO: {activeDef.title.toUpperCase()}

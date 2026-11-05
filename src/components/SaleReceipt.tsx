@@ -3,6 +3,8 @@ import { formatBRL, formatDateBR, formatDocumentBR, formatPhoneBR } from '@/lib/
 import { Button } from '@/components/ui/button'
 import { Printer, ArrowLeft, CheckCircle2, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface SaleReceiptProps {
   sale?: any
@@ -42,6 +44,23 @@ export const SaleReceipt: React.FC<SaleReceiptProps> = ({
   const customer = propCustomer || sale?.expand?.customer
   const store = propStore || sale?.expand?.store
   const seller = propSeller || sale?.expand?.seller
+  const { organization } = useAuth()
+
+  // CNPJ-07: o comprovante mostra a razão social e o CNPJ que fizeram a venda
+  // (o CNPJ gravado na venda, mesmo que a loja tenha trocado de CNPJ depois).
+  const [legalEntity, setLegalEntity] = React.useState<any>(null)
+  React.useEffect(() => {
+    const legalEntityId = sale?.legal_entity
+    if (!legalEntityId) {
+      setLegalEntity(null)
+      return
+    }
+    pb.collection('legal_entities')
+      .getOne(legalEntityId)
+      .then(setLegalEntity)
+      .catch(() => setLegalEntity(null))
+  }, [sale?.legal_entity])
+
   const handlePrint = () => {
     window.print()
   }
@@ -75,6 +94,11 @@ export const SaleReceipt: React.FC<SaleReceiptProps> = ({
             <h2 className="text-lg font-black tracking-wider text-[#111111]">NEW WAY ELETRIC</h2>
           </div>
           <p className="font-semibold text-gray-700">{store?.name || 'New Way Eletric'}</p>
+          {legalEntity && (
+            <p className="text-gray-600 text-[11px]">
+              {legalEntity.razao_social} • CNPJ {formatDocumentBR(legalEntity.cnpj)}
+            </p>
+          )}
           <p className="text-gray-500 text-[11px]">{store?.address}</p>
           <p className="text-gray-500 text-[11px]">
             WhatsApp: {formatPhoneBR(store?.whatsapp || store?.phone)}
@@ -182,10 +206,14 @@ export const SaleReceipt: React.FC<SaleReceiptProps> = ({
             • <strong>Garantia legal e contratual de 1 ano</strong> conforme certificado fornecido
             pelo fabricante (Navee / Segway Ninebot).
           </p>
-          <p>
-            • Assistência técnica especializada em baterias e componentes elétricos realizada na
-            oficina da <strong>Home Lithium</strong> (Loja Cajuru).
-          </p>
+          {organization?.type === 'propria' ? (
+            <p>
+              • Assistência técnica especializada em baterias e componentes elétricos realizada na
+              oficina da <strong>Home Lithium</strong> (Loja Cajuru).
+            </p>
+          ) : (
+            <p>• Para assistência técnica, procure a loja onde a compra foi feita.</p>
+          )}
           <p>
             • O cliente declara ter recebido os itens em perfeito estado de funcionamento e
             inspecionados no ato da entrega.
@@ -200,7 +228,7 @@ export const SaleReceipt: React.FC<SaleReceiptProps> = ({
           </div>
           <div>
             <div className="border-b border-gray-400 mb-1 h-6" />
-            <p className="font-medium text-gray-700">Responsável New Way Eletric</p>
+            <p className="font-medium text-gray-700">Responsável pela loja</p>
           </div>
         </div>
       </div>

@@ -15,6 +15,7 @@ export default function Setup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [setupToken, setSetupToken] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [checking, setChecking] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
@@ -55,31 +56,35 @@ export default function Setup() {
       setErrorMsg('Informe um e-mail válido.')
       return
     }
-    if (password.length < 8) {
-      setErrorMsg('A senha deve ter no mínimo 8 caracteres.')
+    if (password.length < 10) {
+      setErrorMsg('A senha deve ter no mínimo 10 caracteres.')
       return
     }
     if (password !== confirmPassword) {
       setErrorMsg('A confirmação de senha não coincide.')
       return
     }
+    if (!setupToken.trim()) {
+      setErrorMsg('Informe o token de instalação.')
+      return
+    }
 
     try {
       setIsLoading(true)
 
-      // Create first administrator user
-      await pb.collection('users').create({
-        name: name.trim(),
-        email: email.trim(),
-        password: password,
-        passwordConfirm: confirmPassword,
-        profile: 'admin',
-        status: 'ativo',
-        emailVisibility: true,
+      // O servidor só cria o primeiro admin com o token de instalação e
+      // com a base vazia; depois disso a rota se desativa (USR-01).
+      const auth = await pb.send<{ token: string; record: any }>('/backend/v1/setup', {
+        method: 'POST',
+        body: {
+          token: setupToken.trim(),
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          passwordConfirm: confirmPassword,
+        },
       })
-
-      // Authenticate with new admin
-      await pb.collection('users').authWithPassword(email.trim(), password)
+      pb.authStore.save(auth.token, auth.record)
       await refreshUser()
       await checkHasAnyAdmin()
 
@@ -92,7 +97,7 @@ export default function Setup() {
     } catch (err: any) {
       console.error('Setup error:', err)
       const detail = err?.data?.data
-      if (detail && typeof detail === 'object') {
+      if (detail && typeof detail === 'object' && Object.keys(detail).length > 0) {
         const firstErrorKey = Object.keys(detail)[0]
         setErrorMsg(`${firstErrorKey}: ${detail[firstErrorKey].message}`)
       } else {
@@ -115,8 +120,8 @@ export default function Setup() {
           </span>
           <CardTitle className="text-2xl font-bold text-[#111111]">Configuração Inicial</CardTitle>
           <CardDescription className="text-gray-500 text-sm">
-            Cadastre o primeiro <strong>ADMINISTRADOR</strong> com permissão total nas unidades
-            Shopping Jockey Plaza e Loja de rua (Cajuru).
+            Cadastre o primeiro <strong>ADMINISTRADOR</strong>, com permissão total nas lojas
+            próprias e na rede de franquias.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -160,7 +165,7 @@ export default function Setup() {
 
             <div className="space-y-1.5">
               <Label htmlFor="password" className="text-xs font-semibold text-gray-700">
-                Senha (mínimo 8 caracteres)
+                Senha (mínimo 10 caracteres)
               </Label>
               <Input
                 id="password"
@@ -183,6 +188,22 @@ export default function Setup() {
                 placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="setupToken" className="text-xs font-semibold text-gray-700">
+                Token de instalação
+              </Label>
+              <Input
+                id="setupToken"
+                type="password"
+                autoComplete="off"
+                placeholder="Definido no servidor (SETUP_TOKEN)"
+                value={setupToken}
+                onChange={(e) => setSetupToken(e.target.value)}
                 required
                 className="h-11"
               />

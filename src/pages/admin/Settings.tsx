@@ -232,11 +232,7 @@ export default function Settings() {
                       slug: {st.slug}
                     </span>
                   </div>
-                  <CardDescription>
-                    {st.slug === 'jockey-plaza'
-                      ? 'Unidade Shopping Jockey Plaza (Piso L2)'
-                      : 'Unidade Loja de rua no Cajuru (Oficina Home Lithium)'}
-                  </CardDescription>
+                  <CardDescription>{st.address || 'Endereço não cadastrado'}</CardDescription>
                 </CardHeader>
 
                 <div className="space-y-3">
@@ -322,7 +318,7 @@ export default function Settings() {
             <CardHeader className="px-0 pt-0">
               <CardTitle className="text-base text-[#111111]">Categorias de Produtos</CardTitle>
               <CardDescription>
-                Categorias utilizadas no catálogo comercial da New Way Eletric.
+                Categorias utilizadas no catálogo de produtos da organização.
               </CardDescription>
             </CardHeader>
 

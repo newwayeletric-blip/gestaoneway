@@ -53,7 +53,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
-import pb from '@/lib/pocketbase/client'
+import { openProtectedFile } from '@/lib/pocketbase/client'
 
 export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
@@ -683,7 +683,6 @@ export function SaleDetail() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {documents.map((doc) => {
-                    const fileUrl = pb.files.getURL(doc, doc.file)
                     return (
                       <div
                         key={doc.id}
@@ -705,9 +704,11 @@ export function SaleDetail() {
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           <a
-                            href={fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href="#"
+                            onClick={(ev) => {
+                              ev.preventDefault()
+                              openProtectedFile(doc, doc.file).catch(console.error)
+                            }}
                             className="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-8 px-2.5"
                           >
                             Abrir

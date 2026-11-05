@@ -88,7 +88,7 @@ interface PaymentEntry {
 
 export function NewSale() {
   const navigate = useNavigate()
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, organization } = useAuth()
 
   // Data states
   const [stores, setStores] = useState<StoreRecord[]>([])
@@ -589,7 +589,8 @@ export function NewSale() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Nova Venda Balcão</h1>
             <p className="text-sm text-muted-foreground">
-              New Way Eletric • Unidades Shopping Jockey Plaza e Loja Rua Cajuru
+              {organization?.name || 'Venda no balcão'}
+              {stores.length > 0 ? ` • ${stores.map((s) => s.name).join(', ')}` : ''}
             </p>
           </div>
         </div>

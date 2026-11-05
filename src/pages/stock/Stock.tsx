@@ -312,9 +312,7 @@ export default function Stock() {
                           {stk.expand?.variant?.sku || stk.expand?.product?.sku}
                         </td>
                         <td className="py-3 px-3 font-medium text-gray-700">
-                          {stk.expand?.store?.name?.includes('Jockey')
-                            ? 'Shopping Jockey Plaza'
-                            : 'Loja de rua (Cajuru)'}
+                          {stk.expand?.store?.name || '—'}
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span
@@ -366,7 +364,7 @@ export default function Stock() {
               <div>
                 <h3 className="font-bold text-base text-[#111111]">Transferências de Estoque</h3>
                 <p className="text-xs text-gray-500">
-                  Itens transferidos entre Shopping Jockey Plaza e Loja de rua (Cajuru).
+                  Itens transferidos entre as lojas.
                 </p>
               </div>
             </div>
@@ -387,11 +385,9 @@ export default function Stock() {
                   {transfers.map((t) => (
                     <tr key={t.id} className="hover:bg-gray-50/50">
                       <td className="py-3 px-3 font-semibold text-gray-800">
-                        {t.expand?.origin_store?.name?.includes('Jockey') ? 'Jockey' : 'Cajuru'}
+                        {t.expand?.origin_store?.name || '—'}
                         {' → '}
-                        {t.expand?.destination_store?.name?.includes('Jockey')
-                          ? 'Jockey'
-                          : 'Cajuru'}
+                        {t.expand?.destination_store?.name || '—'}
                       </td>
                       <td className="py-3 px-3 text-gray-600">
                         {t.expand?.user?.name || 'Administrador'}
@@ -486,7 +482,7 @@ export default function Stock() {
                         {m.expand?.product?.name}
                       </td>
                       <td className="py-3 px-3 text-gray-600">
-                        {m.expand?.store?.name?.includes('Jockey') ? 'Jockey' : 'Cajuru'}
+                        {m.expand?.store?.name || '—'}
                       </td>
                       <td className="py-3 px-3 font-mono font-bold text-gray-800">
                         {['entrada', 'transferencia_recebimento', 'devolucao'].includes(m.type)

@@ -79,7 +79,8 @@ export function normalizeDocument(doc: string | undefined | null): string {
 
 export function formatDocumentBR(doc: string | undefined | null): string {
   if (!doc) return '-'
-  const digits = doc.replace(/\D/g, '')
+  // Letras ficam: o CNPJ alfanumérico (Receita, a partir de 07/2026) tem letras nas 12 primeiras posições.
+  const digits = doc.toUpperCase().replace(/[^0-9A-Z]/g, '')
   if (digits.length === 11) {
     // CPF: 000.000.000-00
     return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`

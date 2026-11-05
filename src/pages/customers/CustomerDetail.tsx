@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { CustomersService, SalesService } from '@/services/api'
 import type { CustomerRecord, SaleRecord, SaleDocumentRecord } from '@/types'
 import { formatBRL, formatDateBR, formatPhoneBR, formatDocumentBR } from '@/lib/formatters'
-import { pb } from '@/lib/pocketbase/client'
+import { openProtectedFile } from '@/lib/pocketbase/client'
 import {
   User,
   Phone,
@@ -307,11 +307,7 @@ export default function CustomerDetail() {
                           {s.number}
                         </Link>
                       </td>
-                      <td className="py-3 px-3 text-gray-600">
-                        {s.expand?.store?.name?.includes('Jockey')
-                          ? 'Shopping Jockey'
-                          : 'Loja de rua'}
-                      </td>
+                      <td className="py-3 px-3 text-gray-600">{s.expand?.store?.name || '—'}</td>
                       <td className="py-3 px-3 text-gray-600">{s.expand?.seller?.name || '-'}</td>
                       <td className="py-3 px-3 font-bold text-gray-900">{formatBRL(s.total)}</td>
                       <td className="py-3 px-3 uppercase text-[10px] font-mono text-gray-500">
@@ -360,7 +356,6 @@ export default function CustomerDetail() {
             ) : (
               <div className="space-y-2.5">
                 {documents.map((docItem) => {
-                  const fileUrl = pb.files.getURL(docItem, docItem.file)
                   const isXml = docItem.file?.toLowerCase().endsWith('.xml')
                   const isPdf = docItem.file?.toLowerCase().endsWith('.pdf')
                   return (
@@ -397,9 +392,11 @@ export default function CustomerDetail() {
 
                       <div className="shrink-0">
                         <a
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          href="#"
+                          onClick={(ev) => {
+                            ev.preventDefault()
+                            openProtectedFile(docItem, docItem.file).catch(console.error)
+                          }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-white border border-gray-200 text-gray-800 hover:bg-gray-50 shadow-sm"
                         >
                           <ExternalLink className="h-3.5 w-3.5 text-[#0A8F5C]" />

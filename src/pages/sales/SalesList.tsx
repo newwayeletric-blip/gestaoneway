@@ -124,7 +124,7 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
           <p className="text-sm text-gray-500">
             {mySalesOnly
               ? 'Consulte o histórico de suas vendas e emissão de comprovantes.'
-              : 'Histórico unificado das transações do Shopping Jockey Plaza e Loja de rua (Cajuru).'}
+              : 'Histórico unificado das vendas de todas as lojas.'}
           </p>
         </div>
 
@@ -208,7 +208,7 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                     {s.expand?.customer?.name || 'Cliente'}
                   </td>
                   <td className="py-3 px-3 text-gray-500">
-                    {s.expand?.store?.name?.includes('Jockey') ? 'Shopping Jockey' : 'Loja de rua'}
+                    {s.expand?.store?.name || '—'}
                   </td>
                   <td className="py-3 px-3 text-gray-600">{s.expand?.seller?.name || '-'}</td>
                   <td className="py-3 px-3 uppercase text-gray-600 font-mono">

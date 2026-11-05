@@ -37,7 +37,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 
 export default function CustomersList() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, organization } = useAuth()
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -134,7 +134,8 @@ export default function CustomersList() {
             Clientes & Atendimento
           </h2>
           <p className="text-sm text-gray-500">
-            Base única compartilhada entre Shopping Jockey Plaza e Loja de rua (Cajuru).
+            Base única de clientes, compartilhada entre as lojas
+            {organization ? ` da ${organization.name}` : ''}.
           </p>
         </div>
 
@@ -290,7 +291,7 @@ export default function CustomersList() {
               <Input
                 value={cAddress}
                 onChange={(e) => setCAddress(e.target.value)}
-                placeholder="Rua, número, bairro, Curitiba/PR"
+                placeholder="Rua, número, bairro, cidade/UF"
               />
             </div>
 

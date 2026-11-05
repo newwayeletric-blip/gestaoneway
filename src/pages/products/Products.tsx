@@ -39,7 +39,8 @@ export default function Products() {
   const { isAdmin, stores } = useAuth()
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [categories, setCategories] = useState<CategoryRecord[]>([])
-  const [stockMap, setStockMap] = useState<Record<string, { jockey: number; cajuru: number }>>({})
+  // Saldo por produto e por loja: stockMap[produto][loja] = quantidade.
+  const [stockMap, setStockMap] = useState<Record<string, Record<string, number>>>({})
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -70,15 +71,10 @@ export default function Products() {
       setProducts(prodList)
       setCategories(catList)
 
-      const sMap: Record<string, { jockey: number; cajuru: number }> = {}
+      const sMap: Record<string, Record<string, number>> = {}
       stockList.forEach((stk) => {
-        if (!sMap[stk.product]) sMap[stk.product] = { jockey: 0, cajuru: 0 }
-        const isJockey = stk.expand?.store?.slug === 'jockey-plaza'
-        if (isJockey) {
-          sMap[stk.product].jockey += stk.quantity
-        } else {
-          sMap[stk.product].cajuru += stk.quantity
-        }
+        if (!sMap[stk.product]) sMap[stk.product] = {}
+        sMap[stk.product][stk.store] = (sMap[stk.product][stk.store] || 0) + stk.quantity
       })
       setStockMap(sMap)
     } catch (err) {
@@ -153,7 +149,7 @@ export default function Products() {
           <p className="text-sm text-gray-500">
             {isAdmin
               ? 'Gestão de catálogo unificado, variações, preços de venda e custos de aquisição.'
-              : 'Consulte os preços e saldos disponíveis nas unidades Shopping Jockey Plaza e Cajuru.'}
+              : 'Consulte os preços e os saldos disponíveis em cada loja.'}
           </p>
         </div>
 
@@ -201,10 +197,6 @@ export default function Products() {
       {/* PRODUCTS LIST */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filtered.map((prod) => {
-          const stkJockey = stockMap[prod.id]?.jockey || 0
-          const stkCajuru = stockMap[prod.id]?.cajuru || 0
-          const totalStock = stkJockey + stkCajuru
-
           return (
             <Card
               key={prod.id}
@@ -229,22 +221,17 @@ export default function Products() {
 
                 {/* STOCK PER STORE */}
                 <div className="mt-4 p-3 rounded-lg bg-gray-50/80 border border-gray-100 space-y-1.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Shopping Jockey Plaza:</span>
-                    <span
-                      className={`font-bold ${stkJockey > 0 ? 'text-[#0A8F5C]' : 'text-red-500'}`}
-                    >
-                      {stkJockey} un
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Loja de rua (Cajuru):</span>
-                    <span
-                      className={`font-bold ${stkCajuru > 0 ? 'text-[#0A8F5C]' : 'text-red-500'}`}
-                    >
-                      {stkCajuru} un
-                    </span>
-                  </div>
+                  {stores.map((st) => {
+                    const qty = stockMap[prod.id]?.[st.id] || 0
+                    return (
+                      <div key={st.id} className="flex justify-between items-center">
+                        <span className="text-gray-600">{st.name}:</span>
+                        <span className={`font-bold ${qty > 0 ? 'text-[#0A8F5C]' : 'text-red-500'}`}>
+                          {qty} un
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
