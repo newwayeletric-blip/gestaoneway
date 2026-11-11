@@ -12,6 +12,7 @@ import {
   Check,
   AlertTriangle,
   QrCode,
+  FileUp,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -157,6 +158,11 @@ export default function Products() {
 
         {isAdmin && (
           <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link to="/produtos/importar">
+                <FileUp className="mr-2 h-4 w-4" /> Importar planilha
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link to="/etiquetas">
                 <QrCode className="mr-2 h-4 w-4" /> Etiquetas QR

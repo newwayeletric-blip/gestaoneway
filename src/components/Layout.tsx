@@ -152,6 +152,7 @@ export default function Layout() {
     if (path === '/minhas-vendas') return 'Minhas Vendas'
     if (path.startsWith('/clientes/')) return 'Ficha do Cliente'
     if (path === '/clientes') return 'Clientes & Atendimento'
+    if (path === '/produtos/importar') return 'Importar Produtos'
     if (path.startsWith('/produtos/')) return 'Detalhes do Produto'
     if (path === '/produtos')
       return isAdmin ? 'Catálogo de Produtos' : 'Consulta de Produtos & Estoque'

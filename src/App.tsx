@@ -38,6 +38,7 @@ import { SaleDetail } from '@/pages/sales/SaleDetail'
 // Shared modules
 import Products from '@/pages/products/Products'
 import ProductLabels from '@/pages/products/ProductLabels'
+import ProductImport from '@/pages/products/ProductImport'
 import Stock from '@/pages/stock/Stock'
 import CustomersList from '@/pages/customers/CustomersList'
 import CustomerDetail from '@/pages/customers/CustomerDetail'
@@ -92,6 +93,7 @@ export default function App() {
                       <Route path="/relatorios" element={<Reports />} />
                       <Route path="/auditoria" element={<AuditLogs />} />
                       <Route path="/series" element={<SerialNumbers />} />
+                      <Route path="/produtos/importar" element={<ProductImport />} />
                       <Route path="/usuarios" element={<UsersList />} />
                       <Route path="/configuracoes" element={<Settings />} />
                       <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />

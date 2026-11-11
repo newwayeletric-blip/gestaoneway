@@ -154,6 +154,50 @@ export const MailSettingsService = {
   },
 }
 
+// Importação de produtos por planilha (pocketbase/hooks/products_import.js).
+export interface ProductImportRow {
+  sku: string
+  nome: string
+  marca?: string
+  categoria?: string
+  descricao?: string
+  preco_venda?: string
+  custo?: string
+  pede_chassi?: string
+}
+
+export interface ProductImportResult {
+  line: number
+  sku: string
+  name: string
+  action: 'criar' | 'atualizar' | 'erro'
+  errors: string[]
+  product: string
+  has_photo: boolean
+}
+
+export interface ProductImportResponse {
+  dry_run: boolean
+  summary: { criar: number; atualizar: number; erro: number }
+  results: ProductImportResult[]
+}
+
+export const ProductImportService = {
+  async run(rows: ProductImportRow[], dryRun: boolean): Promise<ProductImportResponse> {
+    return await pb.send<ProductImportResponse>('/backend/v1/products/import', {
+      method: 'POST',
+      body: { rows, dry_run: dryRun },
+    })
+  },
+
+  async photoFromUrl(product: string, url: string) {
+    return await pb.send<{ product: string; photo: string }>(
+      '/backend/v1/products/photo-from-url',
+      { method: 'POST', body: { product, url } },
+    )
+  },
+}
+
 export const ProductsService = {
   async list(filter = ''): Promise<ProductRecord[]> {
     return await pb.collection('products').getFullList<ProductRecord>({
