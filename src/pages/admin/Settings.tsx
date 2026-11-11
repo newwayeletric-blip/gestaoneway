@@ -2,16 +2,27 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { StoresService, SettingsService, ProductsService } from '@/services/api'
 import type { StoreRecord, CategoryRecord } from '@/types'
-import { Store as StoreIcon, ShieldCheck, Tag, Percent, Sliders, Save, Plus } from 'lucide-react'
+import {
+  Store as StoreIcon,
+  ShieldCheck,
+  Tag,
+  Percent,
+  Sliders,
+  Save,
+  Plus,
+  Mail,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import MailSettings from './MailSettings'
 
 export default function Settings() {
-  const { stores } = useAuth()
+  const { stores, user } = useAuth()
+  const isNetworkAdmin = user?.network_role === 'admin_rede'
   const [storeList, setStoreList] = useState<StoreRecord[]>(stores)
   const [categories, setCategories] = useState<CategoryRecord[]>([])
   const [newCatName, setNewCatName] = useState('')
@@ -128,6 +139,14 @@ export default function Settings() {
           >
             <Tag className="h-4 w-4 mr-1.5" /> Categorias
           </TabsTrigger>
+          {isNetworkAdmin && (
+            <TabsTrigger
+              value="email"
+              className="data-[state=active]:bg-[#0A8F5C] data-[state=active]:text-white"
+            >
+              <Mail className="h-4 w-4 mr-1.5" /> E-mail
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* TAB 1: REGRAS DE DESCONTO E PARCELAMENTO */}
@@ -372,6 +391,13 @@ export default function Settings() {
             </div>
           </Card>
         </TabsContent>
+
+        {/* TAB 4: E-MAIL DE ENVIO (só o admin da rede) */}
+        {isNetworkAdmin && (
+          <TabsContent value="email">
+            <MailSettings />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

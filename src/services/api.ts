@@ -106,6 +106,36 @@ export const NetworkService = {
   },
 }
 
+export interface MailSettings {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  hasPassword: boolean
+  senderName: string
+}
+
+// E-mail de envio do sistema ("Esqueci minha senha"): só o admin da rede. O
+// servidor manda um e-mail de teste antes de salvar, e a senha nunca volta.
+export const MailSettingsService = {
+  async get(): Promise<MailSettings> {
+    return await pb.send<MailSettings>('/backend/v1/mail-settings', { method: 'GET' })
+  },
+
+  async save(payload: {
+    email: string
+    password: string
+    host: string
+    port: number
+    senderName: string
+  }): Promise<MailSettings> {
+    return await pb.send<MailSettings>('/backend/v1/mail-settings', {
+      method: 'POST',
+      body: payload,
+    })
+  },
+}
+
 export const ProductsService = {
   async list(filter = ''): Promise<ProductRecord[]> {
     return await pb.collection('products').getFullList<ProductRecord>({
