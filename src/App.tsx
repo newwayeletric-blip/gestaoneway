@@ -24,6 +24,7 @@ import Reports from '@/pages/admin/Reports'
 import UsersList from '@/pages/admin/UsersList'
 import Settings from '@/pages/admin/Settings'
 import { AuditLogs } from '@/pages/admin/AuditLogs'
+import { SerialNumbers } from '@/pages/admin/SerialNumbers'
 
 // Seller screens
 import SellerDashboard from '@/pages/seller/SellerDashboard'
@@ -85,6 +86,7 @@ export default function App() {
                       <Route path="/comissoes" element={<Commissions />} />
                       <Route path="/relatorios" element={<Reports />} />
                       <Route path="/auditoria" element={<AuditLogs />} />
+                      <Route path="/series" element={<SerialNumbers />} />
                       <Route path="/usuarios" element={<UsersList />} />
                       <Route path="/configuracoes" element={<Settings />} />
                       <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />

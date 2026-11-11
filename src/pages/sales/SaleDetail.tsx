@@ -18,6 +18,7 @@ import {
   CreditCard,
   Truck,
   Trash2,
+  Hash,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { SalesService, FinancialService } from '@/services/api'
@@ -97,6 +98,11 @@ export function SaleDetail() {
   const [refundAmount, setRefundAmount] = useState<number>(0)
   const [returnItemQuantities, setReturnItemQuantities] = useState<Record<string, number>>({})
   const [isReturning, setIsReturning] = useState(false)
+
+  // Correção da série pelo administrador, antes da NF.
+  const [isSerialModalOpen, setIsSerialModalOpen] = useState(false)
+  const [serialDraft, setSerialDraft] = useState<Record<string, string>>({})
+  const [isSavingSerials, setIsSavingSerials] = useState(false)
 
   // Delivery Modal
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
@@ -225,6 +231,35 @@ export function SaleDetail() {
       toast({ title: 'Erro ao cancelar venda', description: err.message, variant: 'destructive' })
     } finally {
       setIsCanceling(false)
+    }
+  }
+
+  const handleOpenSerials = () => {
+    setSerialDraft(Object.fromEntries(items.map((it) => [it.id, it.serial_number || ''])))
+    setIsSerialModalOpen(true)
+  }
+
+  const handleSaveSerials = async () => {
+    if (!sale) return
+    setIsSavingSerials(true)
+    try {
+      await SalesService.updateSerials(
+        sale.id,
+        items
+          .filter((it) => (serialDraft[it.id] || '') !== (it.serial_number || ''))
+          .map((it) => ({ id: it.id, serial_number: serialDraft[it.id] || '' })),
+      )
+      toast({ title: 'Número de série corrigido', description: 'A correção ficou na auditoria.' })
+      setIsSerialModalOpen(false)
+      loadData()
+    } catch (err: any) {
+      toast({
+        title: 'Não foi possível corrigir',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingSerials(false)
     }
   }
 
@@ -711,10 +746,19 @@ export function SaleDetail() {
           {/* Items Table */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Produtos e Veículos Vendidos
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Produtos e Veículos Vendidos
+                </CardTitle>
+                {isAdmin &&
+                  (isPending || isConfirmed) &&
+                  !documents.some((d) => d.doc_type === 'nota_fiscal') && (
+                    <Button size="sm" variant="outline" onClick={handleOpenSerials}>
+                      <Hash className="h-3.5 w-3.5 mr-1.5" /> Corrigir série
+                    </Button>
+                  )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="border rounded-md overflow-hidden">
@@ -916,6 +960,47 @@ export function SaleDetail() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* MODAL: CORRIGIR SÉRIE (admin, antes da NF) */}
+      <Dialog open={isSerialModalOpen} onOpenChange={setIsSerialModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Corrigir número de série</DialogTitle>
+            <DialogDescription>
+              A série vai na observação da nota fiscal. A correção fica registrada na auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {items.map((it) => (
+              <div key={it.id} className="space-y-1">
+                <Label htmlFor={`fix-serial-${it.id}`} className="text-xs font-semibold">
+                  {it.product_name}
+                </Label>
+                <Input
+                  id={`fix-serial-${it.id}`}
+                  value={serialDraft[it.id] || ''}
+                  onChange={(e) =>
+                    setSerialDraft((prev) => ({
+                      ...prev,
+                      [it.id]: e.target.value.toUpperCase().replace(/\s+/g, ''),
+                    }))
+                  }
+                  placeholder="Sem série"
+                  className="font-mono text-sm"
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSerialModalOpen(false)}>
+              Voltar
+            </Button>
+            <Button onClick={handleSaveSerials} disabled={isSavingSerials}>
+              {isSavingSerials ? 'Salvando...' : 'Salvar série'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL: CANCEL SALE */}
       <Dialog open={isCancelModalOpen} onOpenChange={setIsCancelModalOpen}>

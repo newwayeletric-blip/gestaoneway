@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  ScanLine,
   ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -98,6 +99,12 @@ export function NewSale() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [stockItems, setStockItems] = useState<StockItemRecord[]>([])
+
+  // Bipe: o leitor de código (USB/Bluetooth) digita o SKU e manda Enter.
+  // Depois do produto com série, o cursor vai para a série; depois da série,
+  // volta para cá.
+  const [scanCode, setScanCode] = useState('')
+  const scanInputRef = useRef<HTMLInputElement>(null)
 
   // Selection states
   const [cart, setCart] = useState<CartItem[]>([])
@@ -264,9 +271,13 @@ export function NewSale() {
     )
     const stockQty = stock ? stock.quantity : 0
 
-    const cartKey = variant ? `${product.id}-${variant.id}` : product.id
-    const existing = cart.find((i) => i.id === cartKey)
-    const currentQtyInCart = existing ? existing.quantity : 0
+    // Produto com série: cada unidade é uma linha, com a sua série.
+    const tracksSerial = product.track_serial || !!variant?.track_serial
+    const baseKey = variant ? `${product.id}-${variant.id}` : product.id
+    const sameProduct = cart.filter((i) => i.id === baseKey || i.id.startsWith(`${baseKey}#`))
+    const cartKey = tracksSerial ? `${baseKey}#${Date.now()}-${sameProduct.length}` : baseKey
+    const existing = tracksSerial ? undefined : cart.find((i) => i.id === cartKey)
+    const currentQtyInCart = sameProduct.reduce((sum, i) => sum + i.quantity, 0)
 
     if (currentQtyInCart + 1 > stockQty) {
       toast({
@@ -301,6 +312,33 @@ export function NewSale() {
         },
       ])
     }
+    if (tracksSerial) {
+      setTimeout(() => document.getElementById(`serial-${cartKey}`)?.focus(), 0)
+    }
+  }
+
+  const handleScan = () => {
+    const code = scanCode.trim().toLowerCase()
+    if (!code) return
+    const product = products.find((p) => (p.sku || '').trim().toLowerCase() === code)
+    setScanCode('')
+    if (!product) {
+      toast({
+        title: 'Código não encontrado',
+        description: `Nenhum produto ativo com o código "${scanCode.trim()}".`,
+        variant: 'destructive',
+      })
+      return
+    }
+    handleAddToCart(product)
+  }
+
+  const handleUpdateSerial = (id: string, serial: string) => {
+    setCart((prev) =>
+      prev.map((i) =>
+        i.id === id ? { ...i, serial_number: serial.toUpperCase().replace(/\s+/g, '') } : i,
+      ),
+    )
   }
 
   const handleUpdateQuantity = (id: string, delta: number) => {
@@ -459,6 +497,23 @@ export function NewSale() {
     }
     if (cart.length === 0) {
       toast({ title: 'Adicione ao menos um produto no carrinho', variant: 'destructive' })
+      return
+    }
+    const missingSerial = cart.find(
+      (i) => (i.product.track_serial || i.variant?.track_serial) && !i.serial_number,
+    )
+    if (missingSerial) {
+      toast({
+        title: 'Informe o número de série',
+        description: `Falta a série de "${missingSerial.product.name}". Ela vai na nota fiscal.`,
+        variant: 'destructive',
+      })
+      document.getElementById(`serial-${missingSerial.id}`)?.focus()
+      return
+    }
+    const serials = cart.map((i) => i.serial_number).filter(Boolean)
+    if (new Set(serials).size !== serials.length) {
+      toast({ title: 'Número de série repetido na venda', variant: 'destructive' })
       return
     }
     if (isDiscountOverLimit && !isAdmin && discountReason.trim().length < 5) {
@@ -742,6 +797,22 @@ export function NewSale() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="relative mb-3">
+                <ScanLine className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={scanInputRef}
+                  placeholder="Bipar ou digitar o código do produto e apertar Enter"
+                  value={scanCode}
+                  onChange={(e) => setScanCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleScan()
+                    }
+                  }}
+                  className="pl-9"
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1">
                 {products.map((p) => {
                   const stock = stockItems.find((s) => s.product === p.id && !s.variant)
@@ -838,25 +909,53 @@ export function NewSale() {
                         </Button>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        {/* Quantity changer */}
-                        <div className="flex items-center border rounded-md h-7">
-                          <button
-                            type="button"
-                            className="px-2 text-xs hover:bg-muted"
-                            onClick={() => handleUpdateQuantity(item.id, -1)}
+                      {(item.product.track_serial || item.variant?.track_serial) && (
+                        <div className="flex items-center gap-1.5">
+                          <Label
+                            htmlFor={`serial-${item.id}`}
+                            className="text-[11px] font-semibold text-gray-700 shrink-0"
                           >
-                            -
-                          </button>
-                          <span className="px-2 text-xs font-semibold">{item.quantity}</span>
-                          <button
-                            type="button"
-                            className="px-2 text-xs hover:bg-muted"
-                            onClick={() => handleUpdateQuantity(item.id, 1)}
-                          >
-                            +
-                          </button>
+                            Nº de série
+                          </Label>
+                          <Input
+                            id={`serial-${item.id}`}
+                            value={item.serial_number || ''}
+                            onChange={(e) => handleUpdateSerial(item.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                scanInputRef.current?.focus()
+                              }
+                            }}
+                            placeholder="Bipe ou digite a série (vai na NF)"
+                            className={`h-7 text-xs font-mono ${item.serial_number ? '' : 'border-amber-400'}`}
+                          />
                         </div>
+                      )}
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {/* Quantity changer: produto com série é uma unidade por linha */}
+                        {item.product.track_serial || item.variant?.track_serial ? (
+                          <span className="text-xs text-muted-foreground">1 un.</span>
+                        ) : (
+                          <div className="flex items-center border rounded-md h-7">
+                            <button
+                              type="button"
+                              className="px-2 text-xs hover:bg-muted"
+                              onClick={() => handleUpdateQuantity(item.id, -1)}
+                            >
+                              -
+                            </button>
+                            <span className="px-2 text-xs font-semibold">{item.quantity}</span>
+                            <button
+                              type="button"
+                              className="px-2 text-xs hover:bg-muted"
+                              onClick={() => handleUpdateQuantity(item.id, 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
 
                         {/* Item discount */}
                         <div className="flex items-center gap-1.5">

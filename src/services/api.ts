@@ -106,6 +106,24 @@ export const NetworkService = {
   },
 }
 
+// Uma linha do histórico de série (aba Números de série).
+export interface SerialHistoryItem {
+  serial_number: string
+  product_name: string
+  sku: string
+  returned: boolean
+  sale_id: string
+  sale_number: string
+  sale_status: SaleStatus
+  date: string
+  store: string
+  seller: string
+  customer_name: string
+  customer_phone: string
+  customer_document: string
+  has_nf: boolean
+}
+
 export interface MailSettings {
   enabled: boolean
   host: string
@@ -685,6 +703,22 @@ export const SalesService = {
       `/backend/v1/sales/${saleId}/cancel`,
       { method: 'POST', body: { reason } },
     )
+  },
+
+  // O administrador corrige a série antes da NF (pocketbase/hooks/sales_serials.js).
+  async updateSerials(saleId: string, items: { id: string; serial_number: string }[]) {
+    return await pb.send<{ items: Record<string, string> }>(`/backend/v1/sales/${saleId}/serials`, {
+      method: 'POST',
+      body: { items },
+    })
+  },
+
+  async findSerial(q: string): Promise<SerialHistoryItem[]> {
+    const res = await pb.send<{ items: SerialHistoryItem[] }>('/backend/v1/serials', {
+      method: 'GET',
+      query: { q },
+    })
+    return res.items
   },
 
   async countAwaitingApproval(): Promise<number> {

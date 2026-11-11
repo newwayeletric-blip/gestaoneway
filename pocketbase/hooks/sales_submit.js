@@ -12,6 +12,11 @@
  *   pendente ficam marcados para o administrador decidir; o vendedor
  *   explica o desconto.
  * - A mesma chave de idempotência devolve a venda já criada (duplo clique).
+ * - Número de série (dono, 11/11/2026): informado na venda e levado à
+ *   observação da NF. Em produto com controle de série, cada unidade vem
+ *   numa linha (quantidade 1) com a série obrigatória; a série não se repete
+ *   na venda nem pode estar numa venda ativa da organização (cancelada,
+ *   recusada ou devolvida libera a série).
  *
  * Corpo:
  * { store, customer, idempotency_key, observation?, discount_reason?,
@@ -114,6 +119,7 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
   if (rawItems.length > 50) fail('items', 'Venda com itens demais.')
   const items = []
   const needed = {}
+  const serials = {}
   let subtotal = 0
   let totalDiscount = 0
   for (const raw of rawItems) {
@@ -155,6 +161,18 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
     const gross = round2(price * qty)
     const discount = round2(num(raw.discount || 0))
     if (!(discount >= 0) || discount > gross) fail('items', 'Desconto inválido em "' + name + '".')
+    const serial = text(raw.serial_number).toUpperCase().replace(/\s+/g, '')
+    const tracksSerial =
+      product.getBool('track_serial') || (!!variant && variant.getBool('track_serial'))
+    if (tracksSerial) {
+      if (qty !== 1)
+        fail('items', '"' + name + '" tem número de série: lance uma unidade por linha.')
+      if (!serial) fail('items', 'Informe o número de série de "' + name + '".')
+    }
+    if (serial) {
+      if (serials[serial]) fail('items', 'O número de série ' + serial + ' aparece duas vezes.')
+      serials[serial] = name
+    }
     const variantCost = variant ? variant.getFloat('cost_price') : 0
     items.push({
       product: product.id,
@@ -166,7 +184,7 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
       qty: qty,
       discount: discount,
       total: round2(gross - discount),
-      serial: text(raw.serial_number),
+      serial: serial,
     })
     const k = product.id + '|' + (variant ? variant.id : '')
     if (!needed[k])
@@ -245,6 +263,30 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
     if (again.length > 0) {
       existing = again[0]
       return
+    }
+
+    // Série já vendida (dentro da transação: duas vendas juntas não levam
+    // a mesma unidade).
+    for (const serial in serials) {
+      const sold = tx.findRecordsByFilter(
+        'sale_items',
+        "org = {:org} && serial_number = {:serial} && returned_quantity < quantity && sale.status != 'cancelada' && sale.status != 'recusada'",
+        '',
+        1,
+        0,
+        { org: orgId, serial: serial },
+      )
+      if (sold.length > 0) {
+        const other = tx.findRecordById('sales', sold[0].getString('sale'))
+        fail(
+          'items',
+          'O número de série ' +
+            serial +
+            ' já está na venda ' +
+            other.getString('number') +
+            '. Confira a série ou peça ao administrador para corrigir aquela venda.',
+        )
+      }
     }
 
     // Reserva do estoque (VEN-03): só baixa se houver saldo. O "sem
