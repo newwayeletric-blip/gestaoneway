@@ -102,7 +102,7 @@ export default function Layout() {
     { label: 'Clientes', path: '/clientes', icon: Users },
     { label: 'Produtos', path: '/produtos', icon: Package },
     { label: 'Estoque e transferências', path: '/estoque', icon: Layers },
-    { label: 'Números de série', path: '/series', icon: Hash },
+    { label: 'Consulta de chassi', path: '/series', icon: Hash },
     { label: 'Financeiro', path: '/financeiro', icon: DollarSign },
     { label: 'Comissões', path: '/comissoes', icon: Percent },
     { label: 'Relatórios', path: '/relatorios', icon: FileSpreadsheet },
@@ -162,7 +162,7 @@ export default function Layout() {
       return isAdmin ? 'Gestão de Comissões' : 'Minhas Comissões'
     if (path === '/relatorios') return 'Relatórios Gerenciais'
     if (path === '/auditoria') return 'Trilha de Auditoria'
-    if (path === '/series') return 'Números de Série'
+    if (path === '/series') return 'Consulta de Chassi'
     if (path === '/franquias') return 'Rede de Franquias'
     if (path === '/usuarios') return 'Colaboradores & Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'

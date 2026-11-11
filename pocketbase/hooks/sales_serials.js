@@ -17,12 +17,12 @@ routerAdd('GET', '/backend/v1/serials', (e) => {
     auth.getString('status') !== 'ativo' ||
     auth.getString('profile') !== 'admin'
   ) {
-    throw new ForbiddenError('Só o administrador consulta o histórico de séries.')
+    throw new ForbiddenError('Só o administrador consulta o histórico de chassis.')
   }
   const q = String(e.request.url.query().get('q') || '')
     .toUpperCase()
     .replace(/\s+/g, '')
-  if (q.length < 3) throw new BadRequestError('Digite ao menos 3 caracteres da série.')
+  if (q.length < 3) throw new BadRequestError('Digite ao menos 3 caracteres do chassi.')
 
   const orgId = auth.getString('org')
   const name = (collection, id) => {
@@ -92,7 +92,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
     auth.getString('status') !== 'ativo' ||
     auth.getString('profile') !== 'admin'
   ) {
-    throw new ForbiddenError('Só o administrador corrige o número de série.')
+    throw new ForbiddenError('Só o administrador corrige o chassi.')
   }
   let sale = null
   try {
@@ -103,7 +103,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
   const orgId = auth.getString('org')
   if (sale.getString('org') !== orgId) throw new NotFoundError('Venda não encontrada.')
   if (['aguardando_aprovacao', 'confirmada'].indexOf(sale.getString('status')) === -1) {
-    throw new BadRequestError('Só dá para corrigir a série de venda aguardando ou confirmada.')
+    throw new BadRequestError('Só dá para corrigir o chassi de venda aguardando ou confirmada.')
   }
   const nf = $app.findRecordsByFilter(
     'sale_documents',
@@ -114,7 +114,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
     { sale: sale.id },
   )
   if (nf.length > 0) {
-    throw new BadRequestError('A NF desta venda já foi anexada: a série não muda mais por aqui.')
+    throw new BadRequestError('A NF desta venda já foi anexada: o chassi não muda mais por aqui.')
   }
 
   const body = e.requestInfo().body || {}
@@ -152,9 +152,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
       } catch (_) {}
     }
     if (tracks && !serial) {
-      throw new BadRequestError(
-        'Informe o número de série de "' + it.getString('product_name') + '".',
-      )
+      throw new BadRequestError('Informe o chassi de "' + it.getString('product_name') + '".')
     }
     previous[it.id] = it.getString('serial_number')
     next[it.id] = serial
@@ -163,8 +161,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
   for (const id in next) {
     const serial = next[id]
     if (!serial) continue
-    if (seen[serial])
-      throw new BadRequestError('O número de série ' + serial + ' aparece duas vezes.')
+    if (seen[serial]) throw new BadRequestError('O chassi ' + serial + ' aparece duas vezes.')
     seen[serial] = true
   }
   for (const id in changes) {
@@ -186,7 +183,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
       if (sold.length > 0) {
         const other = tx.findRecordById('sales', sold[0].getString('sale'))
         throw new BadRequestError(
-          'O número de série ' + serial + ' já está na venda ' + other.getString('number') + '.',
+          'O chassi ' + serial + ' já está na venda ' + other.getString('number') + '.',
         )
       }
     }
@@ -199,7 +196,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
     audit.set('record_id', sale.id)
     audit.set('action', 'alteracao')
     audit.set('user', auth.id)
-    audit.set('reason', 'Correção do número de série na venda ' + sale.getString('number'))
+    audit.set('reason', 'Correção do chassi na venda ' + sale.getString('number'))
     audit.set('previous_values', previous)
     audit.set('new_values', next)
     audit.set('ip_address', e.realIP())

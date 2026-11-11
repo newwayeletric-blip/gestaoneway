@@ -165,12 +165,11 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
     const tracksSerial =
       product.getBool('track_serial') || (!!variant && variant.getBool('track_serial'))
     if (tracksSerial) {
-      if (qty !== 1)
-        fail('items', '"' + name + '" tem número de série: lance uma unidade por linha.')
-      if (!serial) fail('items', 'Informe o número de série de "' + name + '".')
+      if (qty !== 1) fail('items', '"' + name + '" pede o chassi: lance uma unidade por linha.')
+      if (!serial) fail('items', 'Informe o chassi de "' + name + '".')
     }
     if (serial) {
-      if (serials[serial]) fail('items', 'O número de série ' + serial + ' aparece duas vezes.')
+      if (serials[serial]) fail('items', 'O chassi ' + serial + ' aparece duas vezes.')
       serials[serial] = name
     }
     const variantCost = variant ? variant.getFloat('cost_price') : 0
@@ -280,11 +279,11 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
         const other = tx.findRecordById('sales', sold[0].getString('sale'))
         fail(
           'items',
-          'O número de série ' +
+          'O chassi ' +
             serial +
             ' já está na venda ' +
             other.getString('number') +
-            '. Confira a série ou peça ao administrador para corrigir aquela venda.',
+            '. Confira o chassi ou peça ao administrador para corrigir aquela venda.',
         )
       }
     }

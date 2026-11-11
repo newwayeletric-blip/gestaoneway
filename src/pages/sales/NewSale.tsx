@@ -504,8 +504,8 @@ export function NewSale() {
     )
     if (missingSerial) {
       toast({
-        title: 'Informe o número de série',
-        description: `Falta a série de "${missingSerial.product.name}". Ela vai na nota fiscal.`,
+        title: 'Informe o chassi',
+        description: `Falta o chassi de "${missingSerial.product.name}". Ele vai na nota fiscal.`,
         variant: 'destructive',
       })
       document.getElementById(`serial-${missingSerial.id}`)?.focus()
@@ -513,7 +513,7 @@ export function NewSale() {
     }
     const serials = cart.map((i) => i.serial_number).filter(Boolean)
     if (new Set(serials).size !== serials.length) {
-      toast({ title: 'Número de série repetido na venda', variant: 'destructive' })
+      toast({ title: 'Chassi repetido na venda', variant: 'destructive' })
       return
     }
     if (isDiscountOverLimit && !isAdmin && discountReason.trim().length < 5) {
@@ -915,7 +915,7 @@ export function NewSale() {
                             htmlFor={`serial-${item.id}`}
                             className="text-[11px] font-semibold text-gray-700 shrink-0"
                           >
-                            Nº de série
+                            Chassi
                           </Label>
                           <Input
                             id={`serial-${item.id}`}
@@ -927,7 +927,7 @@ export function NewSale() {
                                 scanInputRef.current?.focus()
                               }
                             }}
-                            placeholder="Bipe ou digite a série (vai na NF)"
+                            placeholder="Bipe ou digite o chassi (vai na NF)"
                             className={`h-7 text-xs font-mono ${item.serial_number ? '' : 'border-amber-400'}`}
                           />
                         </div>

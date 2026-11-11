@@ -386,7 +386,7 @@ export default function Products() {
                     className="rounded border-gray-300 text-[#0A8F5C]"
                   />
                   <Label htmlFor="chkSerial" className="text-xs font-medium cursor-pointer">
-                    Controlar Número de Série
+                    Pede o chassi na venda
                   </Label>
                 </div>
               </div>

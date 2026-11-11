@@ -249,7 +249,7 @@ export function SaleDetail() {
           .filter((it) => (serialDraft[it.id] || '') !== (it.serial_number || ''))
           .map((it) => ({ id: it.id, serial_number: serialDraft[it.id] || '' })),
       )
-      toast({ title: 'Número de série corrigido', description: 'A correção ficou na auditoria.' })
+      toast({ title: 'Chassi corrigido', description: 'A correção ficou na auditoria.' })
       setIsSerialModalOpen(false)
       loadData()
     } catch (err: any) {
@@ -755,7 +755,7 @@ export function SaleDetail() {
                   (isPending || isConfirmed) &&
                   !documents.some((d) => d.doc_type === 'nota_fiscal') && (
                     <Button size="sm" variant="outline" onClick={handleOpenSerials}>
-                      <Hash className="h-3.5 w-3.5 mr-1.5" /> Corrigir série
+                      <Hash className="h-3.5 w-3.5 mr-1.5" /> Corrigir chassi
                     </Button>
                   )}
               </div>
@@ -782,7 +782,7 @@ export function SaleDetail() {
                           <p className="font-medium">{it.product_name}</p>
                           {it.sku && <p className="text-xs text-muted-foreground">SKU: {it.sku}</p>}
                           {it.serial_number && (
-                            <p className="text-xs text-blue-600">Nº de Série: {it.serial_number}</p>
+                            <p className="text-xs text-blue-600">Chassi: {it.serial_number}</p>
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center font-medium">{it.quantity}</td>
@@ -965,9 +965,9 @@ export function SaleDetail() {
       <Dialog open={isSerialModalOpen} onOpenChange={setIsSerialModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Corrigir número de série</DialogTitle>
+            <DialogTitle>Corrigir chassi</DialogTitle>
             <DialogDescription>
-              A série vai na observação da nota fiscal. A correção fica registrada na auditoria.
+              O chassi vai na observação da nota fiscal. A correção fica registrada na auditoria.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -985,7 +985,7 @@ export function SaleDetail() {
                       [it.id]: e.target.value.toUpperCase().replace(/\s+/g, ''),
                     }))
                   }
-                  placeholder="Sem série"
+                  placeholder="Sem chassi"
                   className="font-mono text-sm"
                 />
               </div>
@@ -996,7 +996,7 @@ export function SaleDetail() {
               Voltar
             </Button>
             <Button onClick={handleSaveSerials} disabled={isSavingSerials}>
-              {isSavingSerials ? 'Salvando...' : 'Salvar série'}
+              {isSavingSerials ? 'Salvando...' : 'Salvar chassi'}
             </Button>
           </DialogFooter>
         </DialogContent>

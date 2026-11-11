@@ -21,7 +21,7 @@ export function SerialNumbers() {
     e.preventDefault()
     const q = query.trim()
     if (q.length < 3) {
-      toast({ title: 'Digite ao menos 3 caracteres da série', variant: 'destructive' })
+      toast({ title: 'Digite ao menos 3 caracteres do chassi', variant: 'destructive' })
       return
     }
     setSearching(true)
@@ -37,9 +37,9 @@ export function SerialNumbers() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-[#111111]">Números de série</h2>
+        <h2 className="text-2xl font-bold tracking-tight text-[#111111]">Consulta de chassi</h2>
         <p className="text-sm text-gray-500">
-          Bipe ou digite a série (ou parte dela) para ver onde a unidade foi vendida.
+          Bipe ou digite o chassi (ou parte dele) para ver onde a unidade foi vendida.
         </p>
       </div>
 
@@ -74,7 +74,7 @@ export function SerialNumbers() {
               <Hash className="h-4 w-4" /> {results.length} resultado(s)
             </CardTitle>
             {results.length === 0 && (
-              <CardDescription>Nenhuma venda com essa série.</CardDescription>
+              <CardDescription>Nenhuma venda com esse chassi.</CardDescription>
             )}
           </CardHeader>
           {results.length > 0 && (
@@ -83,7 +83,7 @@ export function SerialNumbers() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted text-muted-foreground text-left text-xs uppercase font-medium">
                     <tr>
-                      <th className="py-2.5 px-3">Série</th>
+                      <th className="py-2.5 px-3">Chassi</th>
                       <th className="py-2.5 px-3">Produto</th>
                       <th className="py-2.5 px-3">Venda</th>
                       <th className="py-2.5 px-3">Data</th>

@@ -89,7 +89,7 @@ after(async () => {
 test('produto com série exige a série e uma unidade por linha', async () => {
   const without = await submit(ctx.seller.token, [scooter('')], 1000)
   assert.equal(without.status, 400, without.text)
-  assert.match(without.json.message, /Informe o número de série/)
+  assert.match(without.json.message, /Informe o chassi/)
   const two = await submit(ctx.seller.token, [{ ...scooter('X1'), quantity: 2 }], 2000)
   assert.equal(two.status, 400, two.text)
   assert.match(two.json.message, /uma unidade por linha/)
