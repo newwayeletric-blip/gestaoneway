@@ -93,7 +93,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
 
 export function NewSale() {
   const navigate = useNavigate()
-  const { user, isAdmin, organization } = useAuth()
+  const { user, isAdmin, isManager, organization } = useAuth()
   const salesPath = isAdmin ? '/vendas' : '/minhas-vendas'
 
   // Data states
@@ -264,6 +264,10 @@ export function NewSale() {
     totalDiscount > 0 &&
     (discountLimit === undefined ||
       Math.round(totalDiscount * 100) > Math.round(subtotal * discountLimit))
+
+  // O gerente confirma a própria venda com desconto dentro do limite e tudo
+  // pago; acima do limite (ou com saldo), ela espera o administrador.
+  const confirmsDirectly = isAdmin || (isManager && !isDiscountOverLimit && isExactPayment)
 
   // Add product to cart. Devolve a linha nova quando o produto pede chassi.
   const handleAddToCart = (
@@ -585,7 +589,7 @@ export function NewSale() {
       })
 
       let status = res.status
-      if (isAdmin && status === 'aguardando_aprovacao') {
+      if (confirmsDirectly && status === 'aguardando_aprovacao') {
         try {
           status = (
             await SalesService.approveSale(res.id, allowPendingBalance ? authReason.trim() : '')
@@ -1201,7 +1205,7 @@ export function NewSale() {
                 >
                   {isSubmitting ? (
                     'Enviando...'
-                  ) : !isAdmin ? (
+                  ) : !confirmsDirectly ? (
                     <>
                       <Send className="mr-2 h-4 w-4" />
                       Enviar para aprovação

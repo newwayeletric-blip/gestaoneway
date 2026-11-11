@@ -60,8 +60,8 @@ import { openProtectedFile } from '@/lib/pocketbase/client'
 export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { user, isAdmin } = useAuth()
-  const salesPath = isAdmin ? '/vendas' : '/minhas-vendas'
+  const { user, isAdmin, isManager, canApprove } = useAuth()
+  const salesPath = canApprove ? '/vendas' : '/minhas-vendas'
 
   // Decisão do administrador sobre venda aguardando aprovação.
   const [approvalNote, setApprovalNote] = useState('')
@@ -425,6 +425,10 @@ export function SaleDetail() {
   const isConfirmed = sale.status === 'confirmada'
   const isCanceled = sale.status === 'cancelada'
   const isPending = sale.status === 'aguardando_aprovacao'
+  // O gerente decide as vendas da loja dele; na venda dele mesmo, desconto
+  // acima do limite fica para o administrador (o servidor confere de novo).
+  const canDecide =
+    isAdmin || (isManager && !(sale.seller === user?.id && sale.discount_over_limit))
   const isRejected = sale.status === 'recusada'
   const isDelivered = sale.delivery_status === 'entregue'
   const pendingBalance = sale.pending_balance || 0
@@ -505,13 +509,17 @@ export function SaleDetail() {
         </div>
       </div>
 
-      {/* Regra do dono: a NF só sai depois que o administrador confirma. */}
-      {isPending && !isAdmin && (
+      {/* Regra do dono: a NF só sai depois que o administrador ou o gerente confirma. */}
+      {isPending && !canDecide && (
         <Card className="border-amber-300 bg-amber-50/60">
           <CardContent className="pt-4 flex items-start gap-3 text-amber-900 text-sm">
             <Clock className="h-5 w-5 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold">Aguardando aprovação do administrador</p>
+              <p className="font-semibold">
+                {isManager
+                  ? 'Desconto acima do limite: aguardando aprovação do administrador'
+                  : 'Aguardando aprovação do administrador ou do gerente da loja'}
+              </p>
               <p className="mt-0.5">
                 O produto está reservado nesta loja. <strong>Não emita a nota fiscal</strong> antes
                 da aprovação.
@@ -521,7 +529,7 @@ export function SaleDetail() {
         </Card>
       )}
 
-      {isPending && isAdmin && (
+      {isPending && canDecide && (
         <Card className="border-amber-300 bg-amber-50/60">
           <CardContent className="pt-4 space-y-3 text-sm text-amber-950">
             <div className="flex items-start gap-3">
@@ -751,7 +759,7 @@ export function SaleDetail() {
                   <Package className="h-4 w-4" />
                   Produtos e Veículos Vendidos
                 </CardTitle>
-                {isAdmin &&
+                {canApprove &&
                   (isPending || isConfirmed) &&
                   !documents.some((d) => d.doc_type === 'nota_fiscal') && (
                     <Button size="sm" variant="outline" onClick={handleOpenSerials}>
@@ -878,7 +886,8 @@ export function SaleDetail() {
                 <SaleReceipt saleId={sale.id} />
               ) : (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  O comprovante fica disponível depois que o administrador confirmar a venda.
+                  O comprovante fica disponível depois que o administrador ou o gerente confirmar a
+                  venda.
                 </p>
               )}
             </CardContent>
@@ -1343,7 +1352,8 @@ export function SaleDetail() {
                 </Select>
                 {!isConfirmed && (
                   <p className="text-xs text-amber-700 mt-1">
-                    A nota fiscal só pode ser anexada depois que o administrador confirmar a venda.
+                    A nota fiscal só pode ser anexada depois que o administrador ou o gerente
+                    confirmar a venda.
                   </p>
                 )}
               </div>

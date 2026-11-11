@@ -765,9 +765,16 @@ export const SalesService = {
     return res.items
   },
 
-  async countAwaitingApproval(): Promise<number> {
+  // managerId: o gerente não conta a venda dele com desconto acima do limite,
+  // que só o administrador aprova.
+  async countAwaitingApproval(managerId?: string): Promise<number> {
     const res = await pb.collection('sales').getList<SaleRecord>(1, 1, {
-      filter: "status = 'aguardando_aprovacao'",
+      filter: managerId
+        ? pb.filter(
+            "status = 'aguardando_aprovacao' && (seller != {:me} || discount_over_limit = false)",
+            { me: managerId },
+          )
+        : "status = 'aguardando_aprovacao'",
     })
     return res.totalItems
   },

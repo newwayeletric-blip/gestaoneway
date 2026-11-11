@@ -188,7 +188,7 @@ export default function Reports() {
         ])
         setStores(stList)
         setProducts(prList)
-        setSellers(uList.filter((u) => u.profile === 'vendedor' || u.profile === 'admin'))
+        setSellers(uList.filter((u) => u.profile === 'vendedor' || u.profile === 'gerente' || u.profile === 'admin'))
         setCategoriesData(catList)
       } catch (err) {
         console.error('Error fetching lookups:', err)

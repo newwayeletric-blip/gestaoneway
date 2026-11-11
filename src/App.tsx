@@ -92,16 +92,20 @@ export default function App() {
                       <Route path="/comissoes" element={<Commissions />} />
                       <Route path="/relatorios" element={<Reports />} />
                       <Route path="/auditoria" element={<AuditLogs />} />
-                      <Route path="/series" element={<SerialNumbers />} />
                       <Route path="/produtos/importar" element={<ProductImport />} />
                       <Route path="/usuarios" element={<UsersList />} />
                       <Route path="/configuracoes" element={<Settings />} />
-                      <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />
                       <Route path="/estoque/transferencias" element={<Stock />} />
                     </Route>
 
-                    {/* SELLER ONLY ROUTES */}
-                    <Route element={<ProtectedRoute requiredProfile="vendedor" />}>
+                    {/* ADMIN E GERENTE: vendas da loja (o gerente vê só as lojas dele) */}
+                    <Route element={<ProtectedRoute requiredProfile={['admin', 'gerente']} />}>
+                      <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />
+                      <Route path="/series" element={<SerialNumbers />} />
+                    </Route>
+
+                    {/* VENDEDOR E GERENTE (o gerente também vende) */}
+                    <Route element={<ProtectedRoute requiredProfile={['vendedor', 'gerente']} />}>
                       <Route path="/meu-painel" element={<SellerDashboard />} />
                       <Route path="/minhas-vendas" element={<SalesList mySalesOnly={true} />} />
                       <Route path="/minhas-comissoes" element={<MyCommissions />} />

@@ -3,22 +3,25 @@
  * para a observação da NF (pocketbase/hooks/sales_submit.js).
  * - GET /backend/v1/serials?q=...: histórico de uma série na organização
  *   (aba "Números de série"): produto, venda, situação, data, loja,
- *   vendedor, cliente e se a NF já foi anexada. Só o administrador.
- * - POST /backend/v1/sales/{id}/serials: o administrador corrige a série dos
- *   itens antes da NF (venda aguardando aprovação ou confirmada, sem NF
- *   anexada), com as regras do envio e registro na auditoria.
+ *   vendedor, cliente e se a NF já foi anexada. Administrador; o gerente vê
+ *   só as vendas das lojas dele.
+ * - POST /backend/v1/sales/{id}/serials: o administrador (ou o gerente da
+ *   loja da venda) corrige a série dos itens antes da NF (venda aguardando
+ *   aprovação ou confirmada, sem NF anexada), com as regras do envio e
+ *   registro na auditoria.
  *   Corpo: { items: [{ id, serial_number }] }
  */
 routerAdd('GET', '/backend/v1/serials', (e) => {
   const auth = e.auth
+  const profile = auth && auth.collection().name === 'users' ? auth.getString('profile') : ''
   if (
     !auth ||
-    auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    (profile !== 'admin' && profile !== 'gerente')
   ) {
-    throw new ForbiddenError('Só o administrador consulta o histórico de chassis.')
+    throw new ForbiddenError('Só o administrador ou o gerente consultam o histórico de chassis.')
   }
+  const managerStores = profile === 'gerente' ? auth.getStringSlice('stores') : null
   const q = String(e.request.url.query().get('q') || '')
     .toUpperCase()
     .replace(/\s+/g, '')
@@ -49,6 +52,7 @@ routerAdd('GET', '/backend/v1/serials', (e) => {
     } catch (_) {
       continue
     }
+    if (managerStores && managerStores.indexOf(sale.getString('store')) === -1) continue
     let customer = null
     try {
       customer = $app.findRecordById('customers', sale.getString('customer'))
@@ -86,13 +90,13 @@ routerAdd('GET', '/backend/v1/serials', (e) => {
 
 routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
   const auth = e.auth
+  const profile = auth && auth.collection().name === 'users' ? auth.getString('profile') : ''
   if (
     !auth ||
-    auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    (profile !== 'admin' && profile !== 'gerente')
   ) {
-    throw new ForbiddenError('Só o administrador corrige o chassi.')
+    throw new ForbiddenError('Só o administrador ou o gerente da loja corrigem o chassi.')
   }
   let sale = null
   try {
@@ -102,6 +106,12 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
   }
   const orgId = auth.getString('org')
   if (sale.getString('org') !== orgId) throw new NotFoundError('Venda não encontrada.')
+  if (
+    profile === 'gerente' &&
+    auth.getStringSlice('stores').indexOf(sale.getString('store')) === -1
+  ) {
+    throw new NotFoundError('Venda não encontrada.')
+  }
   if (['aguardando_aprovacao', 'confirmada'].indexOf(sale.getString('status')) === -1) {
     throw new BadRequestError('Só dá para corrigir o chassi de venda aguardando ou confirmada.')
   }

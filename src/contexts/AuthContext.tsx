@@ -5,9 +5,13 @@ import { StoresService } from '@/services/api'
 
 interface AuthContextType {
   user: UserRecord | null
-  profile: 'admin' | 'vendedor' | null
+  profile: 'admin' | 'gerente' | 'vendedor' | null
   isAdmin: boolean
   isSeller: boolean
+  // Gerente da loja: vende e aprova as vendas das lojas dele (sem custos).
+  isManager: boolean
+  // Quem aprova venda: o administrador ou o gerente.
+  canApprove: boolean
   isLoading: boolean
   stores: StoreRecord[]
   activeStoreId: string
@@ -148,6 +152,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const profile = user?.profile || null
   const isAdmin = profile === 'admin'
   const isSeller = profile === 'vendedor'
+  const isManager = profile === 'gerente'
+  const canApprove = isAdmin || isManager
 
   const authorizedStores = useMemo(() => {
     if (isAdmin) return stores
@@ -162,6 +168,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         isAdmin,
         isSeller,
+        isManager,
+        canApprove,
         isLoading,
         stores,
         activeStoreId,

@@ -12,6 +12,9 @@
  *   "cancelada" com o motivo. O estoque volta, a comissão é estornada (se já
  *   foi paga, vira débito a compensar) e o reembolso fica pendente. Venda
  *   entregue volta por devolução.
+ * Gerente (dono, 11/11/2026): aprova e recusa as vendas das lojas dele; na
+ * venda dele mesmo, desconto acima do limite fica para o administrador.
+ * Cancelar é só do administrador.
  */
 routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
   const action = e.request.pathValue('action')
@@ -19,13 +22,15 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
     throw new NotFoundError('Ação desconhecida.')
   }
   const auth = e.auth
-  if (
-    !auth ||
-    auth.collection().name !== 'users' ||
-    auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
-  ) {
-    throw new ForbiddenError('Só o administrador aprova, recusa ou cancela vendas.')
+  const active =
+    !!auth && auth.collection().name === 'users' && auth.getString('status') === 'ativo'
+  const isManager = active && auth.getString('profile') === 'gerente'
+  if (!active || (auth.getString('profile') !== 'admin' && !(isManager && action !== 'cancel'))) {
+    throw new ForbiddenError(
+      action === 'cancel'
+        ? 'Só o administrador cancela vendas.'
+        : 'Só o administrador ou o gerente da loja aprovam ou recusam vendas.',
+    )
   }
   let sale = null
   try {
@@ -35,6 +40,20 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
   }
   if (sale.getString('org') !== auth.getString('org'))
     throw new NotFoundError('Venda não encontrada.')
+  if (isManager) {
+    if (auth.getStringSlice('stores').indexOf(sale.getString('store')) === -1) {
+      throw new NotFoundError('Venda não encontrada.')
+    }
+    if (
+      action === 'approve' &&
+      sale.getString('seller') === auth.id &&
+      sale.getBool('discount_over_limit')
+    ) {
+      throw new ForbiddenError(
+        'Desconto acima do limite na sua própria venda: quem aprova é o administrador.',
+      )
+    }
+  }
 
   const body = e.requestInfo().body || {}
   const text = (v) => String(v === undefined || v === null ? '' : v).trim()
@@ -219,7 +238,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
         'alteracao',
         'Venda ' +
           number +
-          ' aprovada pelo administrador' +
+          (isManager ? ' aprovada pelo gerente da loja' : ' aprovada pelo administrador') +
           (details.length ? ' (' + details.join('; ') + ')' : ''),
         { status: 'aguardando_aprovacao' },
         { status: 'confirmada', payment_status: fullyPaid ? 'pago' : 'parcial' },

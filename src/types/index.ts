@@ -1,4 +1,4 @@
-export type UserProfile = 'admin' | 'vendedor'
+export type UserProfile = 'admin' | 'gerente' | 'vendedor'
 export type UserStatus = 'ativo' | 'inativo'
 
 export interface UserRecord {

@@ -77,7 +77,7 @@ export function Commissions() {
       setCommissions(commsRes.items)
       setStores(storesList)
       setAccounts(accsList.filter((a) => a.active))
-      setSellers(usersList.filter((u) => u.profile === 'vendedor' || u.profile === 'admin'))
+      setSellers(usersList.filter((u) => u.profile === 'vendedor' || u.profile === 'gerente' || u.profile === 'admin'))
 
       if (accsList.length > 0) {
         setPayAccount(accsList[0].id)

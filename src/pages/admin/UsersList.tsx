@@ -248,10 +248,16 @@ export default function UsersList() {
                       className={
                         u.profile === 'admin'
                           ? 'bg-[#111111] text-white'
-                          : 'bg-blue-100 text-blue-800'
+                          : u.profile === 'gerente'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-blue-100 text-blue-800'
                       }
                     >
-                      {u.profile === 'admin' ? 'ADMINISTRADOR' : 'VENDEDOR'}
+                      {u.profile === 'admin'
+                        ? 'ADMINISTRADOR'
+                        : u.profile === 'gerente'
+                          ? 'GERENTE'
+                          : 'VENDEDOR'}
                     </Badge>
                   </td>
                   <td className="py-3 px-3">
@@ -390,6 +396,7 @@ export default function UsersList() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="vendedor">Vendedor</SelectItem>
+                    <SelectItem value="gerente">Gerente da loja</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
                   </SelectContent>
                 </Select>
@@ -409,7 +416,7 @@ export default function UsersList() {
               </div>
             </div>
 
-            {profile === 'vendedor' && (
+            {profile !== 'admin' && (
               <div className="space-y-2 pt-1 border-t border-gray-100">
                 <Label className="text-xs font-semibold text-gray-700">
                   Lojas Autorizadas para Venda

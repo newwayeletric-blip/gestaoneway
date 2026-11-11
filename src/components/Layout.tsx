@@ -44,6 +44,8 @@ export default function Layout() {
     profile,
     isAdmin,
     isSeller,
+    isManager,
+    canApprove,
     logout,
     stores,
     activeStoreId,
@@ -75,16 +77,19 @@ export default function Layout() {
     loadLowStock()
   })
 
-  // Regra do dono: vendas de vendedor esperam o administrador antes da NF.
+  // Regra do dono: vendas de vendedor esperam o administrador ou o gerente da
+  // loja antes da NF (o gerente conta só as lojas dele, pelas regras da API).
   const [pendingApprovals, setPendingApprovals] = useState<number>(0)
   const loadPendingApprovals = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canApprove) return
     try {
-      setPendingApprovals(await SalesService.countAwaitingApproval())
+      setPendingApprovals(
+        await SalesService.countAwaitingApproval(isManager ? user?.id : undefined),
+      )
     } catch {
       // ignore
     }
-  }, [isAdmin])
+  }, [canApprove, isManager, user?.id])
 
   useEffect(() => {
     loadPendingApprovals()
@@ -121,7 +126,15 @@ export default function Layout() {
     { label: 'Minhas comissões', path: '/minhas-comissoes', icon: Percent },
   ]
 
-  const menuItems = isAdmin ? adminMenuItems : sellerMenuItems
+  // Gerente: o menu do vendedor mais as vendas e o chassi das lojas dele.
+  const managerMenuItems = [
+    ...sellerMenuItems.slice(0, 3),
+    { label: 'Vendas da loja', path: '/vendas', icon: ShoppingCart },
+    { label: 'Consulta de chassi', path: '/series', icon: Hash },
+    ...sellerMenuItems.slice(3),
+  ]
+
+  const menuItems = isAdmin ? adminMenuItems : isManager ? managerMenuItems : sellerMenuItems
 
   // Admin da rede (PER-01, D.3): grupo "Rede" no topo, antes do menu da
   // organização dele. Os demais usuários veem o menu sem grupos.
@@ -148,7 +161,7 @@ export default function Layout() {
     const path = location.pathname
     if (path.startsWith('/vendas/nova')) return 'Nova Venda (Balcão)'
     if (path.startsWith('/vendas/')) return 'Detalhes da Venda'
-    if (path === '/vendas') return 'Gestão de Vendas'
+    if (path === '/vendas') return isManager ? 'Vendas da Loja' : 'Gestão de Vendas'
     if (path === '/minhas-vendas') return 'Minhas Vendas'
     if (path.startsWith('/clientes/')) return 'Ficha do Cliente'
     if (path === '/clientes') return 'Clientes & Atendimento'
@@ -197,10 +210,12 @@ export default function Layout() {
               className={
                 isAdmin
                   ? 'bg-[#0A8F5C] text-white text-[10px] px-2 py-0.5'
-                  : 'bg-blue-600 text-white text-[10px] px-2 py-0.5'
+                  : isManager
+                    ? 'bg-purple-600 text-white text-[10px] px-2 py-0.5'
+                    : 'bg-blue-600 text-white text-[10px] px-2 py-0.5'
               }
             >
-              {isAdmin ? 'ADMINISTRADOR' : 'VENDEDOR'}
+              {isAdmin ? 'ADMINISTRADOR' : isManager ? 'GERENTE' : 'VENDEDOR'}
             </Badge>
           </div>
         </div>
@@ -395,8 +410,8 @@ export default function Layout() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* VENDAS AGUARDANDO APROVAÇÃO (ADMIN) */}
-            {isAdmin && pendingApprovals > 0 && (
+            {/* VENDAS AGUARDANDO APROVAÇÃO (ADMIN E GERENTE) */}
+            {canApprove && pendingApprovals > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -457,7 +472,11 @@ export default function Layout() {
                     <p className="text-xs leading-none text-gray-500">{user?.email}</p>
                     <div className="pt-1">
                       <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-gray-100 font-medium text-gray-800">
-                        {isAdmin ? 'Administrador' : 'Vendedor Autorizado'}
+                        {isAdmin
+                          ? 'Administrador'
+                          : isManager
+                            ? 'Gerente da loja'
+                            : 'Vendedor Autorizado'}
                       </span>
                     </div>
                   </div>
@@ -471,7 +490,7 @@ export default function Layout() {
                     Configurações da Loja
                   </DropdownMenuItem>
                 )}
-                {isSeller && (
+                {(isSeller || isManager) && (
                   <DropdownMenuItem
                     onClick={() => navigate('/minhas-comissoes')}
                     className="cursor-pointer text-xs"

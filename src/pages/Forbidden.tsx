@@ -8,7 +8,7 @@ export default function Forbidden() {
   const { profile } = useAuth()
 
   const handleBack = () => {
-    if (profile === 'vendedor') {
+    if (profile !== 'admin') {
       navigate('/meu-painel')
     } else {
       navigate('/dashboard')
