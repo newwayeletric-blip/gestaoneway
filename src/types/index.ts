@@ -114,6 +114,9 @@ export interface ProductRecord {
   min_stock: number
   status: 'ativo' | 'inativo'
   track_serial: boolean
+  // Limite de desconto próprio; sem ele, vale o geral das Configurações.
+  discount_limit_custom?: boolean
+  discount_limit_pct?: number
   commission_rate?: number
   created_by?: string
   created: string

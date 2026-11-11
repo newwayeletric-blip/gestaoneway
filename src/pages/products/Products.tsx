@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   QrCode,
   FileUp,
+  Pencil,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -48,18 +49,21 @@ export default function Products() {
   const [selectedCategory, setSelectedCategory] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
-  // New Product Modal
+  // Modal de produto: cadastro novo ou edição (editingId).
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [pName, setPName] = useState('')
   const [pSku, setPSku] = useState('')
   const [pCat, setPCat] = useState('')
-  const [pBrand, setPBrand] = useState('Navee')
+  const [pBrand, setPBrand] = useState('')
   const [pModel, setPModel] = useState('')
   const [pSalePrice, setPSalePrice] = useState('')
   const [pCostPrice, setPCostPrice] = useState('')
   const [pMinStock, setPMinStock] = useState('2')
   const [pDesc, setPDesc] = useState('')
   const [pTrackSerial, setPTrackSerial] = useState(true)
+  // Em branco: vale o limite geral de desconto das Configurações.
+  const [pDiscountLimit, setPDiscountLimit] = useState('')
 
   const { toast } = useToast()
 
@@ -91,7 +95,39 @@ export default function Products() {
     loadData()
   }, [])
 
-  const handleCreateProduct = async (e: React.FormEvent) => {
+  const openCreate = () => {
+    setEditingId(null)
+    setPName('')
+    setPSku('')
+    setPCat('')
+    setPBrand('')
+    setPModel('')
+    setPSalePrice('')
+    setPCostPrice('')
+    setPMinStock('2')
+    setPDesc('')
+    setPTrackSerial(true)
+    setPDiscountLimit('')
+    setIsModalOpen(true)
+  }
+
+  const openEdit = (p: ProductRecord) => {
+    setEditingId(p.id)
+    setPName(p.name)
+    setPSku(p.sku)
+    setPCat(p.category || '')
+    setPBrand(p.brand || '')
+    setPModel(p.model || '')
+    setPSalePrice(String(p.sale_price ?? ''))
+    setPCostPrice(p.cost_price ? String(p.cost_price) : '')
+    setPMinStock(String(p.min_stock ?? 2))
+    setPDesc(p.description || '')
+    setPTrackSerial(!!p.track_serial)
+    setPDiscountLimit(p.discount_limit_custom ? String(p.discount_limit_pct ?? 0) : '')
+    setIsModalOpen(true)
+  }
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isAdmin) return
 
@@ -103,33 +139,42 @@ export default function Products() {
       })
       return
     }
-
-    try {
-      await ProductsService.create({
-        name: pName.trim(),
-        sku: pSku.trim().toUpperCase(),
-        category: pCat || undefined,
-        brand: pBrand.trim(),
-        model: pModel.trim(),
-        sale_price: Number(pSalePrice),
-        cost_price: pCostPrice ? Number(pCostPrice) : undefined,
-        min_stock: Number(pMinStock || 2),
-        description: pDesc.trim(),
-        track_serial: pTrackSerial,
-        status: 'ativo',
+    const limit = Number(pDiscountLimit)
+    if (pDiscountLimit !== '' && !(limit >= 0 && limit <= 100)) {
+      toast({
+        title: 'Limite de desconto inválido',
+        description: 'Use um número de 0 a 100, ou deixe em branco para usar o limite geral.',
+        variant: 'destructive',
       })
+      return
+    }
 
-      toast({ title: 'Produto cadastrado com sucesso!' })
+    const data = {
+      name: pName.trim(),
+      sku: pSku.trim().toUpperCase(),
+      category: pCat || undefined,
+      brand: pBrand.trim(),
+      model: pModel.trim(),
+      sale_price: Number(pSalePrice),
+      cost_price: pCostPrice ? Number(pCostPrice) : 0,
+      min_stock: Number(pMinStock || 2),
+      description: pDesc.trim(),
+      track_serial: pTrackSerial,
+      discount_limit_custom: pDiscountLimit !== '',
+      discount_limit_pct: pDiscountLimit !== '' ? limit : 0,
+    }
+    try {
+      if (editingId) {
+        await ProductsService.update(editingId, data)
+        toast({ title: 'Produto atualizado!' })
+      } else {
+        await ProductsService.create({ ...data, status: 'ativo' })
+        toast({ title: 'Produto cadastrado com sucesso!' })
+      }
       setIsModalOpen(false)
-      setPName('')
-      setPSku('')
-      setPModel('')
-      setPSalePrice('')
-      setPCostPrice('')
-      setPDesc('')
       loadData()
     } catch (err: any) {
-      toast({ title: 'Erro ao criar produto', description: err.message, variant: 'destructive' })
+      toast({ title: 'Erro ao salvar o produto', description: err.message, variant: 'destructive' })
     }
   }
 
@@ -168,10 +213,7 @@ export default function Products() {
                 <QrCode className="mr-2 h-4 w-4" /> Etiquetas QR
               </Link>
             </Button>
-            <Button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white"
-            >
+            <Button onClick={openCreate} className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white">
               <PlusCircle className="mr-2 h-4 w-4" /> Novo Produto
             </Button>
           </div>
@@ -272,6 +314,24 @@ export default function Products() {
                   </div>
                 )}
               </div>
+
+              {isAdmin && (
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-gray-500">
+                    {prod.discount_limit_custom
+                      ? `Desconto até ${prod.discount_limit_pct ?? 0}% (próprio)`
+                      : 'Desconto: limite geral'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => openEdit(prod)}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                  </Button>
+                </div>
+              )}
             </Card>
           )
         })}
@@ -282,13 +342,15 @@ export default function Products() {
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogContent className="sm:max-w-[520px] bg-white">
             <DialogHeader>
-              <DialogTitle>Cadastrar Novo Produto</DialogTitle>
+              <DialogTitle>{editingId ? 'Editar Produto' : 'Cadastrar Novo Produto'}</DialogTitle>
               <DialogDescription>
-                Catálogo comercial das marcas Navee e Segway Ninebot.
+                {editingId
+                  ? 'Mudar o código (SKU) exige imprimir de novo a etiqueta QR.'
+                  : 'Produto novo do catálogo da New Way.'}
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleCreateProduct} className="space-y-3 py-2">
+            <form onSubmit={handleSaveProduct} className="space-y-3 py-2">
               <div className="space-y-1">
                 <Label className="text-xs font-semibold">Nome do Veículo / Produto *</Label>
                 <Input
@@ -330,16 +392,11 @@ export default function Products() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs font-semibold">Marca</Label>
-                  <Select value={pBrand} onValueChange={setPBrand}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Navee">Navee</SelectItem>
-                      <SelectItem value="Segway Ninebot">Segway Ninebot</SelectItem>
-                      <SelectItem value="Acessórios New Way">Acessórios New Way</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    value={pBrand}
+                    onChange={(e) => setPBrand(e.target.value)}
+                    placeholder="Honeywhale, Navee, Segway..."
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -386,7 +443,7 @@ export default function Products() {
                   <Label className="text-xs font-semibold">Estoque Mínimo (Alerta)</Label>
                   <Input
                     type="number"
-                    min="1"
+                    min="0"
                     value={pMinStock}
                     onChange={(e) => setPMinStock(e.target.value)}
                   />
@@ -407,6 +464,25 @@ export default function Products() {
               </div>
 
               <div className="space-y-1">
+                <Label htmlFor="pDiscountLimit" className="text-xs font-semibold">
+                  Limite de desconto deste produto (%)
+                </Label>
+                <Input
+                  id="pDiscountLimit"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={pDiscountLimit}
+                  onChange={(e) => setPDiscountLimit(e.target.value)}
+                  placeholder="Em branco: usa o limite geral das Configurações"
+                />
+                <p className="text-[11px] text-gray-500">
+                  Acima do limite, a venda vai para o administrador aprovar.
+                </p>
+              </div>
+
+              <div className="space-y-1">
                 <Label className="text-xs font-semibold">Descrição Técnica & Recursos</Label>
                 <Textarea
                   value={pDesc}
@@ -421,7 +497,7 @@ export default function Products() {
                   Cancelar
                 </Button>
                 <Button type="submit" className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white">
-                  Cadastrar Produto
+                  {editingId ? 'Salvar alterações' : 'Cadastrar Produto'}
                 </Button>
               </DialogFooter>
             </form>

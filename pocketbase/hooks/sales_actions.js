@@ -12,8 +12,9 @@
  *   "cancelada" com o motivo. O estoque volta, a comissão é estornada (se já
  *   foi paga, vira débito a compensar) e o reembolso fica pendente. Venda
  *   entregue volta por devolução.
- * Gerente (dono, 11/11/2026): aprova e recusa as vendas das lojas dele; na
- * venda dele mesmo, desconto acima do limite fica para o administrador.
+ * Gerente (dono, 11/11/2026): aprova e recusa as vendas das lojas dele;
+ * venda com desconto acima do limite (de qualquer pessoa) só o administrador
+ * aprova.
  * Cancelar é só do administrador.
  */
 routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
@@ -44,14 +45,8 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
     if (auth.getStringSlice('stores').indexOf(sale.getString('store')) === -1) {
       throw new NotFoundError('Venda não encontrada.')
     }
-    if (
-      action === 'approve' &&
-      sale.getString('seller') === auth.id &&
-      sale.getBool('discount_over_limit')
-    ) {
-      throw new ForbiddenError(
-        'Desconto acima do limite na sua própria venda: quem aprova é o administrador.',
-      )
+    if (action === 'approve' && sale.getBool('discount_over_limit')) {
+      throw new ForbiddenError('Desconto acima do limite: quem aprova é o administrador.')
     }
   }
 

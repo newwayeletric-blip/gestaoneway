@@ -31,7 +31,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 }
 
 export default function SalesList({ mySalesOnly = false }: SalesListProps) {
-  const { user, canApprove, stores } = useAuth()
+  const { user, isAdmin, canApprove, stores } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [sales, setSales] = useState<SaleRecord[]>([])
   const [search, setSearch] = useState('')
@@ -194,7 +194,10 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                   </td>
                   <td className="py-3 px-3 text-gray-400">{formatDateBR(s.created)}</td>
                   <td className="py-3 px-3 text-right">
-                    {canApprove && !mySalesOnly && s.status === 'aguardando_aprovacao' ? (
+                    {canApprove &&
+                    !mySalesOnly &&
+                    s.status === 'aguardando_aprovacao' &&
+                    (isAdmin || !s.discount_over_limit) ? (
                       <Button
                         asChild
                         size="sm"

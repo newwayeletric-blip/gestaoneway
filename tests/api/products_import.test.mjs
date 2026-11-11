@@ -102,6 +102,7 @@ test('cria pelo SKU, com preço brasileiro, categoria nova e auditoria', async (
   assert.equal(g4.sale_price, 9999)
   assert.equal(g4.cost_price, 6700)
   assert.equal(g4.track_serial, true)
+  assert.equal(g4.discount_limit_custom, false, 'sem a coluna, vale o limite geral')
   assert.equal(g4.status, 'ativo')
   assert.equal(g4.expand.category.name, 'Patinete')
   const cap = await bySku('NW-TESTE-CAP')
@@ -117,13 +118,20 @@ test('cria pelo SKU, com preço brasileiro, categoria nova e auditoria', async (
 })
 
 test('importar de novo atualiza; preço vazio mantém o atual', async () => {
-  const res = await run(ctx.admin, [{ ...scooter, preco_venda: '10.499', custo: '' }, { ...helmet, preco_venda: '' }])
+  const bad = await run(ctx.admin, [{ ...scooter, limite_desconto: '120' }], true)
+  assert.deepEqual(bad.json.results[0].errors, ['"limite_desconto" deve ser de 0 a 100'])
+  const res = await run(ctx.admin, [
+    { ...scooter, preco_venda: '10.499', custo: '', limite_desconto: '3,5%' },
+    { ...helmet, preco_venda: '' },
+  ])
   assert.equal(res.status, 200, res.text)
   assert.deepEqual(res.json.summary, { criar: 0, atualizar: 2, erro: 0 })
   const g4 = await bySku('NW-TESTE-G4')
   assert.equal(g4.id, ctx.g4)
   assert.equal(g4.sale_price, 10499)
   assert.equal(g4.cost_price, 6700)
+  assert.equal(g4.discount_limit_custom, true)
+  assert.equal(g4.discount_limit_pct, 3.5)
   assert.equal((await bySku('NW-TESTE-CAP')).sale_price, 120.5)
   const cats = await api('GET', `/api/collections/categories/records?filter=${encodeURIComponent("name = 'Patinete'")}`, {
     token: ctx.admin,

@@ -1,8 +1,9 @@
 /**
  * VEN-04 / D.8 cenário 8: o navegador manda só produto, variação,
  * quantidade e desconto pedido. Preço, nome, SKU, custo e total vêm do
- * catálogo. Desconto acima do limite configurado é recusado; sem limite
- * configurado, o vendedor não dá desconto (nada vem pré-preenchido).
+ * catálogo. Desconto acima do limite é recusado neste caminho de rascunho;
+ * o limite é o próprio do produto, se ele tiver um, ou o geral da
+ * organização (padrão 5%; dono, 11/11/2026).
  * A confirmação atômica da venda (VEN-01) é da Fase 1.
  */
 onRecordCreateRequest((e) => {
@@ -59,27 +60,23 @@ onRecordCreateRequest((e) => {
     } catch (_) {
       throw new BadRequestError('Venda não encontrada.')
     }
-    const method = sale.getString('payment') || 'pix'
-    let limitPct = null
-    // Limite configurado pela organização da venda (cada franquia tem o seu).
-    const settings = $app.findRecordsByFilter(
-      'settings',
-      'org = {:org} && key = {:key}',
-      '',
-      1,
-      0,
-      { org: sale.getString('org'), key: 'max_discount_' + method },
-    )
-    if (settings.length > 0) {
-      const parsed = parseFloat(settings[0].getString('value'))
-      if (!isNaN(parsed) && parsed >= 0) limitPct = parsed
-    }
-    if (limitPct === null) {
-      throw new BadRequestError(
-        'Desconto não permitido: o limite de desconto para ' +
-          method +
-          ' não está configurado. Peça ao administrador.',
+    let limitPct = 5
+    if (product.getBool('discount_limit_custom')) {
+      limitPct = product.getFloat('discount_limit_pct')
+    } else {
+      // Limite geral da organização da venda (cada franquia tem o seu).
+      const settings = $app.findRecordsByFilter(
+        'settings',
+        "org = {:org} && key = 'max_discount_general'",
+        '',
+        1,
+        0,
+        { org: sale.getString('org') },
       )
+      if (settings.length > 0) {
+        const parsed = parseFloat(settings[0].getString('value'))
+        if (!isNaN(parsed) && parsed >= 0) limitPct = parsed
+      }
     }
     const maxDiscount = round2((gross * limitPct) / 100)
     if (discount > maxDiscount) {

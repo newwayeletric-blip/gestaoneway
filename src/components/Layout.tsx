@@ -83,13 +83,11 @@ export default function Layout() {
   const loadPendingApprovals = useCallback(async () => {
     if (!canApprove) return
     try {
-      setPendingApprovals(
-        await SalesService.countAwaitingApproval(isManager ? user?.id : undefined),
-      )
+      setPendingApprovals(await SalesService.countAwaitingApproval(isManager))
     } catch {
       // ignore
     }
-  }, [canApprove, isManager, user?.id])
+  }, [canApprove, isManager])
 
   useEffect(() => {
     loadPendingApprovals()

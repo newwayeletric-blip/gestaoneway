@@ -85,10 +85,8 @@ before(async () => {
   ctx.sellerA = await login('vendedor.a@newway.dev')
   ctx.sellerB = await login('vendedor.b@newway.dev')
 
-  for (const [key, value] of [
-    ['max_discount_pix', '5'],
-    ['max_installments_cartao_credito', '10'],
-  ]) {
+  // O limite geral de desconto (5%) já vem da migration 0017.
+  for (const [key, value] of [['max_installments_cartao_credito', '10']]) {
     ok(await api('POST', '/api/collections/settings/records', { token: ctx.admin.token, body: { key, value } }), key)
   }
 

@@ -425,10 +425,9 @@ export function SaleDetail() {
   const isConfirmed = sale.status === 'confirmada'
   const isCanceled = sale.status === 'cancelada'
   const isPending = sale.status === 'aguardando_aprovacao'
-  // O gerente decide as vendas da loja dele; na venda dele mesmo, desconto
-  // acima do limite fica para o administrador (o servidor confere de novo).
-  const canDecide =
-    isAdmin || (isManager && !(sale.seller === user?.id && sale.discount_over_limit))
+  // O gerente decide as vendas da loja dele; desconto acima do limite (de
+  // qualquer pessoa) fica para o administrador (o servidor confere de novo).
+  const canDecide = isAdmin || (isManager && !sale.discount_over_limit)
   const isRejected = sale.status === 'recusada'
   const isDelivered = sale.delivery_status === 'entregue'
   const pendingBalance = sale.pending_balance || 0
@@ -516,7 +515,7 @@ export function SaleDetail() {
             <Clock className="h-5 w-5 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">
-                {isManager
+                {sale.discount_over_limit
                   ? 'Desconto acima do limite: aguardando aprovação do administrador'
                   : 'Aguardando aprovação do administrador ou do gerente da loja'}
               </p>

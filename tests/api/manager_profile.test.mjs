@@ -61,7 +61,6 @@ before(async () => {
   ctx.sellerJP = await user('vendedor.jp@newway.dev', 'vendedor', ctx.jp)
   ctx.sellerCJ = await user('vendedor.cj@newway.dev', 'vendedor', ctx.cj)
 
-  ok(await api('POST', '/api/collections/settings/records', { token: ctx.admin, body: { key: 'max_discount_pix', value: '5' } }), 'limite')
   ctx.scooter = (
     await api('POST', '/api/collections/products/records', {
       token: ctx.admin,

@@ -131,8 +131,9 @@ export function NewSale() {
   const [newPayInstallments, setNewPayInstallments] = useState<number>(1)
 
   // Limites da organização (Configurações): desconto por forma de pagamento e
-  // parcelas. Sem limite configurado, qualquer desconto passa pelo administrador.
-  const [discountLimits, setDiscountLimits] = useState<Partial<Record<PaymentMethod, number>>>({})
+  // parcelas. Limite de desconto (dono, 11/11/2026): o próprio do produto ou
+  // o geral (padrão 5%); acima dele, a venda vai para o administrador.
+  const [generalDiscountLimit, setGeneralDiscountLimit] = useState<number>(5)
   const [maxInstallmentsLimit, setMaxInstallmentsLimit] = useState<number>(12)
   const [discountReason, setDiscountReason] = useState('')
 
@@ -180,12 +181,8 @@ export function NewSale() {
 
         // Mesmas chaves que a tela de Configurações grava e o servidor confere.
         const settings = await SettingsService.getAll()
-        const limits: Partial<Record<PaymentMethod, number>> = {}
-        for (const method of Object.keys(METHOD_LABELS) as PaymentMethod[]) {
-          const value = parseFloat(settings[`max_discount_${method}`])
-          if (!isNaN(value) && value >= 0) limits[method] = value
-        }
-        setDiscountLimits(limits)
+        const general = parseFloat(settings.max_discount_general)
+        setGeneralDiscountLimit(!isNaN(general) && general >= 0 ? general : 5)
         setMaxInstallmentsLimit(parseInt(settings.max_installments_cartao_credito, 10) || 12)
       } catch (err: any) {
         toast({
@@ -251,19 +248,18 @@ export function NewSale() {
     return Math.round(totalPaid * 100) === Math.round(total * 100) && total > 0
   }, [totalPaid, total])
 
-  // O limite de desconto vem da forma de pagamento principal (a de maior
-  // valor), como o servidor confere. Acima dele, o administrador decide.
-  const mainMethod = useMemo<PaymentMethod>(() => {
-    let main: PaymentEntry | null = null
-    for (const p of payments) if (!main || p.amount > main.amount) main = p
-    return main ? main.method : 'pix'
-  }, [payments])
-  const discountLimit = discountLimits[mainMethod]
-  const discountPercent = subtotal > 0 ? (totalDiscount / subtotal) * 100 : 0
-  const isDiscountOverLimit =
-    totalDiscount > 0 &&
-    (discountLimit === undefined ||
-      Math.round(totalDiscount * 100) > Math.round(subtotal * discountLimit))
+  // Cada item contra o seu limite: o próprio do produto ou o geral, como o
+  // servidor confere. Acima dele, o administrador decide.
+  const limitOf = (item: CartItem) =>
+    item.product.discount_limit_custom
+      ? (item.product.discount_limit_pct ?? 0)
+      : generalDiscountLimit
+  const overLimitItems = cart.filter(
+    (i) =>
+      i.discount > 0 &&
+      Math.round(i.discount * 100) > Math.round(i.sale_price * i.quantity * limitOf(i)),
+  )
+  const isDiscountOverLimit = overLimitItems.length > 0
 
   // O gerente confirma a própria venda com desconto dentro do limite e tudo
   // pago; acima do limite (ou com saldo), ela espera o administrador.
@@ -1162,10 +1158,11 @@ export function NewSale() {
                   <p className="flex gap-1.5 text-xs font-medium text-amber-900">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <span>
-                      Desconto de {discountPercent.toFixed(1).replace('.', ',')}%{' '}
-                      {discountLimit === undefined
-                        ? `sem limite configurado para ${METHOD_LABELS[mainMethod]}.`
-                        : `acima do limite de ${discountLimit}% para ${METHOD_LABELS[mainMethod]}.`}{' '}
+                      Desconto acima do limite em{' '}
+                      {overLimitItems
+                        .map((i) => `${i.product.name} (até ${limitOf(i)}%)`)
+                        .join(', ')}
+                      .{' '}
                       {isAdmin
                         ? 'Como administrador, você confirma direto.'
                         : 'O administrador vai analisar antes de aprovar.'}

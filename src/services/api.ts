@@ -164,6 +164,7 @@ export interface ProductImportRow {
   preco_venda?: string
   custo?: string
   pede_chassi?: string
+  limite_desconto?: string
 }
 
 export interface ProductImportResult {
@@ -765,15 +766,12 @@ export const SalesService = {
     return res.items
   },
 
-  // managerId: o gerente não conta a venda dele com desconto acima do limite,
+  // withinLimitOnly: o gerente não conta venda com desconto acima do limite,
   // que só o administrador aprova.
-  async countAwaitingApproval(managerId?: string): Promise<number> {
+  async countAwaitingApproval(withinLimitOnly = false): Promise<number> {
     const res = await pb.collection('sales').getList<SaleRecord>(1, 1, {
-      filter: managerId
-        ? pb.filter(
-            "status = 'aguardando_aprovacao' && (seller != {:me} || discount_over_limit = false)",
-            { me: managerId },
-          )
+      filter: withinLimitOnly
+        ? "status = 'aguardando_aprovacao' && discount_over_limit = false"
         : "status = 'aguardando_aprovacao'",
     })
     return res.totalItems

@@ -120,6 +120,13 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
   const items = []
   const needed = {}
   const serials = {}
+  // Limite de desconto (dono, 11/11/2026): o próprio do produto, se ele tiver
+  // um, ou o geral da organização (padrão 5%). Passou em algum item, a venda
+  // vai para o administrador aprovar; guarda-se o menor limite ultrapassado.
+  let generalLimit = parseFloat(setting('max_discount_general'))
+  if (isNaN(generalLimit) || generalLimit < 0) generalLimit = 5
+  let overLimit = false
+  let violatedLimit = null
   let subtotal = 0
   let totalDiscount = 0
   for (const raw of rawItems) {
@@ -161,6 +168,13 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
     const gross = round2(price * qty)
     const discount = round2(num(raw.discount || 0))
     if (!(discount >= 0) || discount > gross) fail('items', 'Desconto inválido em "' + name + '".')
+    const itemLimit = product.getBool('discount_limit_custom')
+      ? product.getFloat('discount_limit_pct')
+      : generalLimit
+    if (discount > 0 && discount > round2((gross * itemLimit) / 100)) {
+      overLimit = true
+      if (violatedLimit === null || itemLimit < violatedLimit) violatedLimit = itemLimit
+    }
     const serial = text(raw.serial_number).toUpperCase().replace(/\s+/g, '')
     const tracksSerial =
       product.getBool('track_serial') || (!!variant && variant.getBool('track_serial'))
@@ -243,12 +257,7 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
   let main = { method: 'pix', amount: -1, installments: 1 }
   for (const p of payments) if (p.amount > main.amount) main = p
 
-  // Desconto acima do limite da forma de pagamento principal (sem limite
-  // configurado, qualquer desconto passa pelo administrador).
-  let limitPct = parseFloat(setting('max_discount_' + main.method))
-  if (isNaN(limitPct) || limitPct < 0) limitPct = -1
-  const overLimit =
-    totalDiscount > 0 && (limitPct < 0 || totalDiscount > round2((subtotal * limitPct) / 100))
+  const limitPct = overLimit ? violatedLimit : generalLimit
   const discountReason = text(body.discount_reason)
   if (overLimit && !isAdmin && discountReason.length < 5) {
     fail('discount_reason', 'Explique ao administrador o motivo do desconto acima do limite.')

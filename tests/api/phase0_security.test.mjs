@@ -165,13 +165,11 @@ describe('Fixtures de catálogo e vendas', () => {
     ok(customer, 'cliente')
     ctx.customer = customer.json.id
 
-    ok(
-      await api('POST', '/api/collections/settings/records', {
-        token: ctx.admin.token,
-        body: { key: 'max_discount_pix', value: '5' },
-      }),
-      'limite de desconto Pix = 5%',
-    )
+    // O limite geral de desconto (5%) vem da migration 0017.
+    const general = await api('GET', `/api/collections/settings/records?filter=${encodeURIComponent("key = 'max_discount_general'")}`, {
+      token: ctx.admin.token,
+    })
+    assert.equal(general.json.items[0]?.value, '5', 'limite geral de desconto = 5%')
 
     // Venda do vendedor B (terceiro) com item, para o cenário 2.
     const saleB = await api('POST', '/api/collections/sales/records', {

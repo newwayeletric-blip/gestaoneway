@@ -11,7 +11,7 @@
  *   PRODUCT_PHOTO_SOURCES troca a lista, separada por vírgula), para o
  *   servidor não buscar arquivos em qualquer lugar.
  * Linha: { sku, nome, marca?, categoria?, descricao?, preco_venda?, custo?,
- *          pede_chassi? ("sim"/"não") }
+ *          pede_chassi? ("sim"/"não"), limite_desconto? (% próprio do produto) }
  */
 routerAdd('POST', '/backend/v1/products/import', (e) => {
   const auth = e.auth
@@ -61,6 +61,11 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
     const chassi = text(r.pede_chassi).toLowerCase()
     if (chassi && ['sim', 'não', 'nao'].indexOf(chassi) === -1)
       errors.push('"pede_chassi" deve ser sim ou não')
+    // Limite de desconto próprio do produto (%); vazio mantém o que já está.
+    const limitText = text(r.limite_desconto).replace('%', '').replace(',', '.')
+    const discountLimit = limitText ? Number(limitText) : null
+    if (discountLimit !== null && !(discountLimit >= 0 && discountLimit <= 100))
+      errors.push('"limite_desconto" deve ser de 0 a 100')
     if (sku) seen[sku] = seen[sku] || line
 
     let existing = null
@@ -92,6 +97,7 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         price: price,
         cost: cost,
         chassi: chassi,
+        discountLimit: discountLimit,
       })
     }
   }
@@ -142,6 +148,10 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
       if (p.price !== null) rec.set('sale_price', p.price)
       if (p.cost !== null) rec.set('cost_price', p.cost)
       if (p.chassi) rec.set('track_serial', p.chassi === 'sim')
+      if (p.discountLimit !== null) {
+        rec.set('discount_limit_custom', true)
+        rec.set('discount_limit_pct', p.discountLimit)
+      }
       tx.save(rec)
       p.result.product = rec.id
     }

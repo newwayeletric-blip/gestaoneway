@@ -26,6 +26,7 @@ const COLUMNS = [
   'preco_venda',
   'custo',
   'pede_chassi',
+  'limite_desconto',
 ] as const
 
 export default function ProductImport() {

@@ -27,13 +27,10 @@ export default function Settings() {
   const [categories, setCategories] = useState<CategoryRecord[]>([])
   const [newCatName, setNewCatName] = useState('')
 
-  // Limites de desconto: em branco = não definido, e qualquer desconto nessa
-  // forma de pagamento pede o motivo ao vendedor (como o servidor confere).
-  // Sem valor sugerido: os de exemplo foram removidos na Fase 0.
-  const [maxDiscPix, setMaxDiscPix] = useState('')
-  const [maxDiscDinheiro, setMaxDiscDinheiro] = useState('')
-  const [maxDiscCartao, setMaxDiscCartao] = useState('')
-  const [maxDiscDebito, setMaxDiscDebito] = useState('')
+  // Limite geral de desconto (dono, 11/11/2026): vale para vendedor e gerente
+  // em todos os produtos que não têm um limite próprio (Produtos → Editar).
+  // Padrão 5%, como o servidor.
+  const [maxDiscGeneral, setMaxDiscGeneral] = useState('5')
   const [maxInstallments, setMaxInstallments] = useState('12')
 
   const { toast } = useToast()
@@ -48,11 +45,7 @@ export default function Settings() {
       setStoreList(sts)
       setCategories(cats)
 
-      if (settings.max_discount_pix) setMaxDiscPix(settings.max_discount_pix)
-      if (settings.max_discount_dinheiro) setMaxDiscDinheiro(settings.max_discount_dinheiro)
-      if (settings.max_discount_cartao_credito)
-        setMaxDiscCartao(settings.max_discount_cartao_credito)
-      if (settings.max_discount_cartao_debito) setMaxDiscDebito(settings.max_discount_cartao_debito)
+      if (settings.max_discount_general) setMaxDiscGeneral(settings.max_discount_general)
       if (settings.max_installments_cartao_credito)
         setMaxInstallments(settings.max_installments_cartao_credito)
     } catch (err) {
@@ -81,11 +74,17 @@ export default function Settings() {
 
   const handleSaveRules = async () => {
     try {
+      const general = Number(maxDiscGeneral)
+      if (maxDiscGeneral === '' || !(general >= 0 && general <= 100)) {
+        toast({
+          title: 'Desconto geral inválido',
+          description: 'Use um número de 0 a 100.',
+          variant: 'destructive',
+        })
+        return
+      }
       await Promise.all([
-        SettingsService.set('max_discount_pix', maxDiscPix),
-        SettingsService.set('max_discount_dinheiro', maxDiscDinheiro),
-        SettingsService.set('max_discount_cartao_credito', maxDiscCartao),
-        SettingsService.set('max_discount_cartao_debito', maxDiscDebito),
+        SettingsService.set('max_discount_general', String(general)),
         SettingsService.set('max_installments_cartao_credito', maxInstallments),
       ])
       toast({
@@ -157,85 +156,30 @@ export default function Settings() {
                 Limites Comerciais para Balcão
               </CardTitle>
               <CardDescription>
-                Toda venda de vendedor passa pelo administrador antes da nota fiscal. Desconto acima
-                do limite da forma de pagamento chega destacado na aprovação, com o motivo escrito
-                pelo vendedor. Em branco, qualquer desconto nessa forma de pagamento pede o motivo.
+                Desconto até o limite passa direto; acima dele, a venda vai para o administrador
+                aprovar, com o motivo escrito pelo vendedor ou gerente. O limite geral vale para
+                todos os produtos; um produto pode ter limite próprio em Produtos → Editar.
               </CardDescription>
             </CardHeader>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl py-2">
               <div className="space-y-2">
-                <Label htmlFor="pixDisc" className="text-xs font-semibold text-gray-700">
-                  Desconto Máximo no Pix (%)
+                <Label htmlFor="generalDisc" className="text-xs font-semibold text-gray-700">
+                  Desconto Máximo Geral (vendedor e gerente)
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
-                    id="pixDisc"
+                    id="generalDisc"
                     type="number"
                     min="0"
                     max="100"
-                    value={maxDiscPix}
-                    placeholder="Não definido"
-                    onChange={(e) => setMaxDiscPix(e.target.value)}
+                    step="0.5"
+                    value={maxDiscGeneral}
+                    onChange={(e) => setMaxDiscGeneral(e.target.value)}
                   />
                   <span className="text-sm font-semibold text-gray-500">%</span>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cashDisc" className="text-xs font-semibold text-gray-700">
-                  Desconto Máximo em Dinheiro Espécie (%)
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="cashDisc"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={maxDiscDinheiro}
-                    placeholder="Não definido"
-                    onChange={(e) => setMaxDiscDinheiro(e.target.value)}
-                  />
-                  <span className="text-sm font-semibold text-gray-500">%</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cardDisc" className="text-xs font-semibold text-gray-700">
-                  Desconto Máximo no Cartão de Crédito (%)
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="cardDisc"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={maxDiscCartao}
-                    placeholder="Não definido"
-                    onChange={(e) => setMaxDiscCartao(e.target.value)}
-                  />
-                  <span className="text-sm font-semibold text-gray-500">%</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="debitDisc" className="text-xs font-semibold text-gray-700">
-                  Desconto Máximo no Cartão de Débito (%)
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="debitDisc"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={maxDiscDebito}
-                    onChange={(e) => setMaxDiscDebito(e.target.value)}
-                    placeholder="Não definido"
-                  />
-                  <span className="text-sm font-semibold text-gray-500">%</span>
-                </div>
-              </div>
-
               <div className="space-y-2">
                 <Label htmlFor="instLimit" className="text-xs font-semibold text-gray-700">
                   Limite Máximo de Parcelas (Cartão)
