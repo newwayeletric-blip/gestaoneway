@@ -171,7 +171,7 @@ test('esqueci a senha manda o link do sistema e a senha nova funciona', async ()
   const mail = await waitMessage(3)
   assert.match(mail, /Redefinir sua senha/)
   assert.match(mail, /Vendedor Teste/)
-  const token = mail.match(/https:\/\/gestaoneway\.vercel\.app\/reset-password\?token=([A-Za-z0-9._-]+)/)?.[1]
+  const token = mail.match(/https:\/\/nwcrmapp\.com\/reset-password\?token=([A-Za-z0-9._-]+)/)?.[1]
   assert.ok(token, 'link para o /reset-password do sistema')
 
   const confirm = await api('POST', '/api/collections/users/confirm-password-reset', {
