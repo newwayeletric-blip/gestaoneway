@@ -260,7 +260,8 @@ export type SaleStatus =
   | 'devolvida'
 export type SalePaymentStatus = 'pendente' | 'parcial' | 'pago'
 export type SaleDeliveryStatus = 'pendente' | 'entregue'
-export type PaymentMethod = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito'
+// marketplace: venda importada do Mercado Livre/Amazon pelo Bling (já paga lá).
+export type PaymentMethod = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'marketplace'
 
 // NF-e pelo Bling: aguardando_admin (gerente aprovou), emitindo (na Sefaz),
 // autorizada ou erro (motivo em nf_error). Vazio: sem Bling, NF à mão.
@@ -289,6 +290,11 @@ export interface SaleRecord {
   nf_error?: string
   nf_key?: string
   nf_issued_at?: string
+  // Venda de marketplace importada do Bling (migration 0020).
+  channel?: string
+  external_number?: string
+  marketplace_fee?: number
+  shipping_cost?: number
   authorized_by?: string
   authorization_note?: string
   cancellation_reason?: string

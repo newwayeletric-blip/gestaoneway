@@ -33,6 +33,7 @@ import type {
   FranchiseSummary,
   SaleStatus,
   PaymentMethod,
+  UserRecord,
 } from '@/types'
 
 export const StoresService = {
@@ -232,6 +233,139 @@ export const BlingService = {
     return await pb.send<BlingStatus>('/backend/v1/bling/nfe-settings', {
       method: 'POST',
       body: payload,
+    })
+  },
+}
+
+// Marketplaces pelo Bling (pocketbase/hooks/marketplaces.js): só o administrador.
+export type ChannelKind = 'mercado_livre' | 'amazon' | 'shopee' | 'magalu' | 'outro'
+export interface SalesChannel {
+  id: string
+  bling_store_id: string
+  name: string
+  kind: ChannelKind
+  active: boolean
+  stock_store: string
+  seller: string
+  import_from: string
+  sync_stock: boolean
+  bling_deposit_id: string
+  last_import_at: number
+  last_stock_sync_at: number
+  last_error: string
+  imported: number
+  waiting: number
+  errors: number
+}
+export interface MarketplaceOrder {
+  id: string
+  channel: string
+  bling_order_id: string
+  external_number: string
+  order_date: string
+  total: number
+  customer_name: string
+  status: 'importado' | 'aguardando_vinculo' | 'ignorado' | 'cancelado' | 'erro'
+  sale: string
+  sale_number: string
+  missing: { bling_product_id: string; code: string; name: string }[] | null
+  note: string
+}
+export interface ChannelStockRow {
+  bling_product_id: string
+  bling_code: string
+  bling_name: string
+  product: string
+  product_name: string
+  sku: string
+  system_qty: number
+  bling_qty: number
+  last_pushed: number
+}
+export interface ImportSummary {
+  imported: number
+  waiting: number
+  canceled: number
+  ignored: number
+  errors: number
+}
+
+export const MarketplaceService = {
+  async overview(): Promise<{ connected: boolean; channels: SalesChannel[] }> {
+    return await pb.send('/backend/v1/marketplaces', { method: 'GET' })
+  },
+
+  // Canais (lojas) e depósitos do Bling, para configurar.
+  async discover(): Promise<{
+    source: 'canais' | 'pedidos'
+    channels: {
+      bling_store_id: string
+      name: string
+      type: string
+      orders?: number
+      sample?: string
+    }[]
+    deposits: { id: string; name: string; standard: boolean; active: boolean }[]
+  }> {
+    return await pb.send('/backend/v1/marketplaces/discover', { method: 'GET' })
+  },
+
+  async saveChannel(payload: {
+    bling_store_id: string
+    name: string
+    kind: ChannelKind
+    active: boolean
+    stock_store: string
+    seller: string
+    import_from: string
+    sync_stock: boolean
+    bling_deposit_id: string
+  }): Promise<{ id: string }> {
+    return await pb.send('/backend/v1/marketplaces/channels', { method: 'POST', body: payload })
+  },
+
+  async importNow(channelId: string): Promise<ImportSummary> {
+    return await pb.send(`/backend/v1/marketplaces/channels/${channelId}/import`, {
+      method: 'POST',
+    })
+  },
+
+  async orders(status = ''): Promise<MarketplaceOrder[]> {
+    const res = await pb.send<{ items: MarketplaceOrder[] }>(
+      '/backend/v1/marketplaces/orders' + (status ? `?status=${status}` : ''),
+      { method: 'GET' },
+    )
+    return res.items
+  },
+
+  async link(payload: {
+    bling_product_id: string
+    bling_code: string
+    bling_name: string
+    product: string
+  }): Promise<{ id: string }> {
+    return await pb.send('/backend/v1/marketplaces/links', { method: 'POST', body: payload })
+  },
+
+  async stock(channelId: string): Promise<ChannelStockRow[]> {
+    const res = await pb.send<{ items: ChannelStockRow[] }>(
+      `/backend/v1/marketplaces/channels/${channelId}/stock`,
+      { method: 'GET' },
+    )
+    return res.items
+  },
+
+  async pushStock(channelId: string): Promise<{ sent: number; failures: string[] }> {
+    return await pb.send(`/backend/v1/marketplaces/channels/${channelId}/stock`, {
+      method: 'POST',
+    })
+  },
+
+  // Quem pode responder pelas vendas do canal (administrador ou gerente ativo).
+  async staff(): Promise<UserRecord[]> {
+    return await pb.collection('users').getFullList<UserRecord>({
+      filter: "status = 'ativo' && (profile = 'admin' || profile = 'gerente')",
+      sort: 'name',
     })
   },
 }

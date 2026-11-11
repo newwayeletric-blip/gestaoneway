@@ -281,6 +281,10 @@ function emit(app, saleId, userId, ip) {
       if (s.getString('status') !== 'confirmada') {
         throw new Error('a nota só sai de venda confirmada')
       }
+      // Venda de marketplace: a nota sai pelo Bling, junto do pedido do canal.
+      if (s.getString('channel')) {
+        throw new Error('venda de marketplace: a nota fiscal sai pelo Bling, no pedido do canal')
+      }
       if (st === 'autorizada') {
         claimedFrom = 'autorizada'
         return

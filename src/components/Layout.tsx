@@ -25,6 +25,7 @@ import {
   Building2,
   Clock,
   Hash,
+  Globe,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -102,6 +103,7 @@ export default function Layout() {
   const adminMenuItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Vendas', path: '/vendas', icon: ShoppingCart },
+    { label: 'Marketplaces', path: '/marketplaces', icon: Globe },
     { label: 'Clientes', path: '/clientes', icon: Users },
     { label: 'Produtos', path: '/produtos', icon: Package },
     { label: 'Estoque e transferências', path: '/estoque', icon: Layers },
@@ -175,6 +177,7 @@ export default function Layout() {
     if (path === '/relatorios') return 'Relatórios Gerenciais'
     if (path === '/auditoria') return 'Trilha de Auditoria'
     if (path === '/series') return 'Consulta de Chassi'
+    if (path === '/marketplaces') return 'Marketplaces (Mercado Livre e Amazon)'
     if (path === '/franquias') return 'Rede de Franquias'
     if (path === '/usuarios') return 'Colaboradores & Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'

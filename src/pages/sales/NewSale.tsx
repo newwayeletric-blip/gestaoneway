@@ -97,6 +97,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   dinheiro: 'Dinheiro',
   cartao_debito: 'Cartão de débito',
   cartao_credito: 'Cartão de crédito',
+  marketplace: 'Marketplace',
 }
 
 export function NewSale() {

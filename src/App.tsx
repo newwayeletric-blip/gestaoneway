@@ -39,6 +39,7 @@ import { SaleDetail } from '@/pages/sales/SaleDetail'
 import Products from '@/pages/products/Products'
 import ProductLabels from '@/pages/products/ProductLabels'
 import ProductImport from '@/pages/products/ProductImport'
+import Marketplaces from '@/pages/admin/Marketplaces'
 import Stock from '@/pages/stock/Stock'
 import CustomersList from '@/pages/customers/CustomersList'
 import CustomerDetail from '@/pages/customers/CustomerDetail'
@@ -93,6 +94,7 @@ export default function App() {
                       <Route path="/relatorios" element={<Reports />} />
                       <Route path="/auditoria" element={<AuditLogs />} />
                       <Route path="/produtos/importar" element={<ProductImport />} />
+                      <Route path="/marketplaces" element={<Marketplaces />} />
                       <Route path="/usuarios" element={<UsersList />} />
                       <Route path="/configuracoes" element={<Settings />} />
                       <Route path="/estoque/transferencias" element={<Stock />} />

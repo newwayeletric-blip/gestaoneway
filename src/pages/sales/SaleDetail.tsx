@@ -672,10 +672,24 @@ export function SaleDetail() {
                 {sale.expand?.confirmed_by?.name ? ` por ${sale.expand.confirmed_by.name}` : ''}
                 {sale.confirmed_at ? ` em ${formatDateBR(sale.confirmed_at, true)}` : ''}
               </p>
-              {!sale.nf_status && (
+              {!sale.nf_status && !sale.channel && (
                 <p className="mt-0.5">A nota fiscal pode ser emitida e anexada nesta venda.</p>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Venda de marketplace (importada do Bling): a NF sai pelo Bling. */}
+      {sale.channel && (
+        <Card className="border-sky-300 bg-sky-50/50">
+          <CardContent className="pt-4 text-sm text-sky-950 space-y-0.5">
+            <p className="font-semibold">{sale.observation || 'Venda de marketplace'}</p>
+            <p>
+              Taxa do marketplace: {formatBRL(sale.marketplace_fee || 0)} · Frete:{' '}
+              {formatBRL(sale.shipping_cost || 0)} · Líquido:{' '}
+              {formatBRL(sale.total - (sale.marketplace_fee || 0))}
+            </p>
           </CardContent>
         </Card>
       )}

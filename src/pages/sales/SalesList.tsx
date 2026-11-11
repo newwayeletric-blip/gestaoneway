@@ -28,6 +28,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
   cartao_debito: 'Débito',
   cartao_credito: 'Crédito',
+  marketplace: 'Marketplace',
 }
 
 export default function SalesList({ mySalesOnly = false }: SalesListProps) {

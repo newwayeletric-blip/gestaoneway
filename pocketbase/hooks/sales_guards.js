@@ -7,8 +7,8 @@
  * A nota fiscal só é anexada a uma venda confirmada pelo administrador.
  * O superusuário (painel do Skip) não passa por estas travas.
  */
-// Campos da NF-e automática (pocketbase/hooks/lib/nfe.js): só o servidor
-// grava. (Os handlers rodam isolados: a lista vai dentro de cada um.)
+// Campos da NF-e automática (pocketbase/hooks/lib/nfe.js) e da venda de
+// marketplace: só o servidor grava. (Os handlers rodam isolados: a lista vai dentro de cada um.)
 onRecordCreateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next()
   const NF_FIELDS = [
@@ -18,6 +18,11 @@ onRecordCreateRequest((e) => {
     'nf_key',
     'nf_started_at',
     'nf_issued_at',
+    // Venda de marketplace (pocketbase/hooks/lib/marketplace.js).
+    'channel',
+    'external_number',
+    'marketplace_fee',
+    'shipping_cost',
   ]
   if (e.record.getString('status') !== 'rascunho') {
     throw new ForbiddenError('Venda nova pela API só como rascunho. Use o botão de enviar a venda.')
@@ -25,9 +30,13 @@ onRecordCreateRequest((e) => {
   for (const field of NF_FIELDS) {
     if (!e.record.collection().fields.getByName(field)) continue
     const filled =
-      field === 'nf_started_at' ? e.record.getFloat(field) !== 0 : e.record.getString(field) !== ''
+      ['nf_started_at', 'marketplace_fee', 'shipping_cost'].indexOf(field) >= 0
+        ? e.record.getFloat(field) !== 0
+        : e.record.getString(field) !== ''
     if (filled) {
-      throw new ForbiddenError('A situação da nota fiscal é gravada só pelo servidor.')
+      throw new ForbiddenError(
+        'A nota fiscal e os dados do marketplace são gravados só pelo servidor.',
+      )
     }
   }
   return e.next()
@@ -84,11 +93,18 @@ onRecordUpdateRequest((e) => {
     'nf_key',
     'nf_started_at',
     'nf_issued_at',
+    // Venda de marketplace (pocketbase/hooks/lib/marketplace.js).
+    'channel',
+    'external_number',
+    'marketplace_fee',
+    'shipping_cost',
   ]
   for (const field of NF_FIELDS) {
     if (!e.record.collection().fields.getByName(field)) continue
     if (String(e.record.get(field)) !== String(before.get(field))) {
-      throw new ForbiddenError('A situação da nota fiscal é gravada só pelo servidor.')
+      throw new ForbiddenError(
+        'A nota fiscal e os dados do marketplace são gravados só pelo servidor.',
+      )
     }
   }
   const invoiceChanged = e.record.getString('invoice_number') !== before.getString('invoice_number')
