@@ -11,7 +11,9 @@ import {
   ShieldCheck,
   Check,
   AlertTriangle,
+  QrCode,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -154,12 +156,19 @@ export default function Products() {
         </div>
 
         {isAdmin && (
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white"
-          >
-            <PlusCircle className="mr-2 h-4 w-4" /> Novo Produto
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link to="/etiquetas">
+                <QrCode className="mr-2 h-4 w-4" /> Etiquetas QR
+              </Link>
+            </Button>
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white"
+            >
+              <PlusCircle className="mr-2 h-4 w-4" /> Novo Produto
+            </Button>
+          </div>
         )}
       </div>
 

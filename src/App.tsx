@@ -37,6 +37,7 @@ import { SaleDetail } from '@/pages/sales/SaleDetail'
 
 // Shared modules
 import Products from '@/pages/products/Products'
+import ProductLabels from '@/pages/products/ProductLabels'
 import Stock from '@/pages/stock/Stock'
 import CustomersList from '@/pages/customers/CustomersList'
 import CustomerDetail from '@/pages/customers/CustomerDetail'
@@ -75,6 +76,10 @@ export default function App() {
 
                 {/* AUTHENTICATED ROUTES */}
                 <Route element={<ProtectedRoute />}>
+                  {/* Etiquetas QR: fora do layout, para imprimir só as etiquetas */}
+                  <Route element={<ProtectedRoute requiredProfile="admin" />}>
+                    <Route path="/etiquetas" element={<ProductLabels />} />
+                  </Route>
                   <Route element={<Layout />}>
                     {/* ROOT */}
                     <Route path="/" element={<RootRedirect />} />

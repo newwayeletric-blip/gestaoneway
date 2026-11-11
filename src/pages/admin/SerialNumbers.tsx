@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { FileCheck, Hash, ScanLine, Search } from 'lucide-react'
+import { Camera, FileCheck, Hash, ScanLine, Search } from 'lucide-react'
+import { BarcodeScannerDialog } from '@/components/BarcodeScannerDialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -16,10 +17,11 @@ export function SerialNumbers() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SerialHistoryItem[] | null>(null)
   const [searching, setSearching] = useState(false)
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
 
-  const handleSearch = async (e: FormEvent) => {
-    e.preventDefault()
-    const q = query.trim()
+  const handleSearch = async (e?: FormEvent, value = query) => {
+    e?.preventDefault()
+    const q = value.trim()
     if (q.length < 3) {
       toast({ title: 'Digite ao menos 3 caracteres do chassi', variant: 'destructive' })
       return
@@ -63,9 +65,29 @@ export function SerialNumbers() {
             >
               <Search className="h-4 w-4 mr-1.5" /> {searching ? 'Buscando...' : 'Buscar'}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => setIsCameraOpen(true)}
+            >
+              <Camera className="h-4 w-4 mr-1.5" /> Câmera
+            </Button>
           </form>
         </CardContent>
       </Card>
+
+      <BarcodeScannerDialog
+        open={isCameraOpen}
+        onOpenChange={setIsCameraOpen}
+        title="Ler o chassi"
+        description="Aponte a câmera para o código de barras do chassi."
+        onDetected={(text) => {
+          const value = text.toUpperCase().replace(/\s+/g, '')
+          setQuery(value)
+          handleSearch(undefined, value)
+        }}
+      />
 
       {results !== null && (
         <Card className="bg-white border-0 shadow-sm rounded-xl">

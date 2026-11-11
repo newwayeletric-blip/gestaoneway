@@ -14,8 +14,10 @@ import {
   Banknote,
   QrCode,
   ScanLine,
+  Camera,
   ShieldAlert,
 } from 'lucide-react'
+import { BarcodeScannerDialog } from '@/components/BarcodeScannerDialog'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   ProductsService,
@@ -105,6 +107,10 @@ export function NewSale() {
   // volta para cá.
   const [scanCode, setScanCode] = useState('')
   const scanInputRef = useRef<HTMLInputElement>(null)
+  // Câmera do celular/tablet: lendo o produto ou o chassi de uma linha.
+  const [scannerTarget, setScannerTarget] = useState<
+    { kind: 'product' } | { kind: 'serial'; itemId: string } | null
+  >(null)
 
   // Selection states
   const [cart, setCart] = useState<CartItem[]>([])
@@ -259,8 +265,12 @@ export function NewSale() {
     (discountLimit === undefined ||
       Math.round(totalDiscount * 100) > Math.round(subtotal * discountLimit))
 
-  // Add product to cart
-  const handleAddToCart = (product: ProductRecord, variant?: ProductVariantRecord) => {
+  // Add product to cart. Devolve a linha nova quando o produto pede chassi.
+  const handleAddToCart = (
+    product: ProductRecord,
+    variant?: ProductVariantRecord,
+    focusSerial = true,
+  ): string | undefined => {
     if (!selectedStoreId) {
       toast({ title: 'Selecione a loja da venda primeiro', variant: 'destructive' })
       return
@@ -312,25 +322,46 @@ export function NewSale() {
         },
       ])
     }
-    if (tracksSerial) {
+    if (!tracksSerial) return
+    if (focusSerial) {
       setTimeout(() => document.getElementById(`serial-${cartKey}`)?.focus(), 0)
     }
+    return cartKey
   }
 
-  const handleScan = () => {
-    const code = scanCode.trim().toLowerCase()
+  // O código vem do leitor (campo de bipe) ou da câmera; é o SKU do produto.
+  const handleScanCode = (raw: string, focusSerial = true) => {
+    const code = raw.trim().toLowerCase()
     if (!code) return
     const product = products.find((p) => (p.sku || '').trim().toLowerCase() === code)
-    setScanCode('')
     if (!product) {
       toast({
         title: 'Código não encontrado',
-        description: `Nenhum produto ativo com o código "${scanCode.trim()}".`,
+        description: `Nenhum produto ativo com o código "${raw.trim()}".`,
         variant: 'destructive',
       })
       return
     }
-    handleAddToCart(product)
+    return handleAddToCart(product, undefined, focusSerial)
+  }
+
+  const handleScan = () => {
+    handleScanCode(scanCode)
+    setScanCode('')
+  }
+
+  // Câmera: produto e, em seguida, o chassi da linha nova (a câmera reabre;
+  // sem código de barras no chassi, o vendedor fecha e digita).
+  const handleCameraCode = (text: string) => {
+    if (!scannerTarget) return
+    if (scannerTarget.kind === 'serial') {
+      handleUpdateSerial(scannerTarget.itemId, text)
+      return
+    }
+    const newLine = handleScanCode(text, false)
+    if (newLine) {
+      setTimeout(() => setScannerTarget({ kind: 'serial', itemId: newLine }), 300)
+    }
   }
 
   const handleUpdateSerial = (id: string, serial: string) => {
@@ -797,21 +828,31 @@ export function NewSale() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="relative mb-3">
-                <ScanLine className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  ref={scanInputRef}
-                  placeholder="Bipar ou digitar o código do produto e apertar Enter"
-                  value={scanCode}
-                  onChange={(e) => setScanCode(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleScan()
-                    }
-                  }}
-                  className="pl-9"
-                />
+              <div className="mb-3 flex gap-2">
+                <div className="relative flex-1">
+                  <ScanLine className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    ref={scanInputRef}
+                    placeholder="Bipe ou digite o código e aperte Enter"
+                    value={scanCode}
+                    onChange={(e) => setScanCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleScan()
+                      }
+                    }}
+                    className="pl-9"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => setScannerTarget({ kind: 'product' })}
+                >
+                  <Camera className="h-4 w-4 mr-1.5" /> Câmera
+                </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1">
                 {products.map((p) => {
@@ -930,6 +971,16 @@ export function NewSale() {
                             placeholder="Bipe ou digite o chassi (vai na NF)"
                             className={`h-7 text-xs font-mono ${item.serial_number ? '' : 'border-amber-400'}`}
                           />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            title="Ler o chassi pela câmera"
+                            onClick={() => setScannerTarget({ kind: 'serial', itemId: item.id })}
+                          >
+                            <Camera className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       )}
 
@@ -1177,6 +1228,19 @@ export function NewSale() {
           </Card>
         </div>
       </div>
+
+      {/* CÂMERA: produto (etiqueta QR) ou chassi (código de barras) */}
+      <BarcodeScannerDialog
+        open={scannerTarget !== null}
+        onOpenChange={(open) => !open && setScannerTarget(null)}
+        title={scannerTarget?.kind === 'serial' ? 'Ler o chassi' : 'Ler o produto'}
+        description={
+          scannerTarget?.kind === 'serial'
+            ? 'Aponte para o código de barras do chassi. Se ele não tiver código, feche e digite o chassi.'
+            : 'Aponte a câmera para a etiqueta QR do produto.'
+        }
+        onDetected={handleCameraCode}
+      />
 
       {/* MODAL: ADD PAYMENT */}
       <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>

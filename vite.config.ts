@@ -27,6 +27,11 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [mode === 'development' ? uidPlugin() : undefined, react()].filter(Boolean),
+  // Câmera e etiquetas carregam estes pacotes sob demanda; pré-empacotados, o
+  // Vite de desenvolvimento não recarrega a página no primeiro uso.
+  optimizeDeps: {
+    include: ['@zxing/browser', 'qrcode'],
+  },
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode ?? process.env.NODE_ENV ?? 'production'),
   },
