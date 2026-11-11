@@ -11,6 +11,7 @@ import type {
   TransferRecord,
   TransferItemRecord,
   SaleRecord,
+  SaleNfStatus,
   SaleItemRecord,
   SalePaymentRecord,
   SaleDocumentRecord,
@@ -156,6 +157,12 @@ export const MailSettingsService = {
 
 // Conexão com o Bling (pocketbase/hooks/bling.js): só o administrador. O
 // Client Secret e os tokens nunca voltam; do Client ID, só os 6 últimos.
+export interface NfResult {
+  status: SaleNfStatus
+  number: string
+  error: string
+}
+
 export interface BlingStatus {
   configured: boolean
   clientIdEnd: string
@@ -166,6 +173,16 @@ export interface BlingStatus {
   lastRefreshAt: number
   tokenExpiresAt: number
   lastError: string
+  nfeNaturezaId: number
+  nfeNaturezaName: string
+  nfeNcmDefault: string
+}
+
+export interface BlingNatureza {
+  id: number
+  name: string
+  active: boolean
+  standard: boolean
 }
 
 export const BlingService = {
@@ -201,6 +218,22 @@ export const BlingService = {
   async disconnect(): Promise<BlingStatus> {
     return await pb.send<BlingStatus>('/backend/v1/bling/disconnect', { method: 'POST' })
   },
+
+  // Naturezas de operação do Bling; lastUsedId = a da última nota emitida lá.
+  async naturezas(): Promise<{ items: BlingNatureza[]; lastUsedId: number }> {
+    return await pb.send('/backend/v1/bling/naturezas', { method: 'GET' })
+  },
+
+  async saveNfeSettings(payload: {
+    natureza_id: number
+    natureza_name: string
+    ncm_default: string
+  }): Promise<BlingStatus> {
+    return await pb.send<BlingStatus>('/backend/v1/bling/nfe-settings', {
+      method: 'POST',
+      body: payload,
+    })
+  },
 }
 
 // Importação de produtos por planilha (pocketbase/hooks/products_import.js).
@@ -214,6 +247,7 @@ export interface ProductImportRow {
   custo?: string
   pede_chassi?: string
   limite_desconto?: string
+  ncm?: string
 }
 
 export interface ProductImportResult {
@@ -776,11 +810,23 @@ export const SalesService = {
     )
   },
 
+  // Com o Bling conectado, a aprovação do administrador já emite a NF-e
+  // (nf); a do gerente deixa a nota esperando o administrador (nf = null).
   async approveSale(saleId: string, note = '') {
-    return await pb.send<{ id: string; number: string; status: SaleStatus }>(
+    return await pb.send<{ id: string; number: string; status: SaleStatus; nf?: NfResult | null }>(
       `/backend/v1/sales/${saleId}/approve`,
       { method: 'POST', body: { note } },
     )
+  },
+
+  // Emite, tenta de novo ou atualiza a NF-e da venda confirmada (só o admin).
+  async emitNfe(saleId: string): Promise<NfResult> {
+    return await pb.send<NfResult>(`/backend/v1/sales/${saleId}/nfe`, { method: 'POST' })
+  },
+
+  // O que falta para a NF-e sair (CPF, endereço do cliente, configuração).
+  async checkNfe(saleId: string): Promise<{ connected: boolean; problems: string[] }> {
+    return await pb.send(`/backend/v1/sales/${saleId}/nfe/check`, { method: 'GET' })
   },
 
   // Recusa a venda aguardando aprovação; o estoque reservado volta.

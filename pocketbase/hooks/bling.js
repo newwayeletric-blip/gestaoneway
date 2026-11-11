@@ -225,6 +225,86 @@ routerAdd('POST', '/backend/v1/bling/disconnect', (e) => {
   return e.json(200, bling.status($app, rec))
 })
 
+// Naturezas de operação cadastradas no Bling, para a nota fiscal. A da última
+// nota de saída emitida no Bling vem marcada (é a que a empresa já usa).
+routerAdd('GET', '/backend/v1/bling/naturezas', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador configura o Bling.')
+  }
+  const bling = require(`${__hooks}/lib/bling.js`)
+  const rec = bling.find($app, auth.getString('org'))
+  if (!rec || !rec.getString('refresh_token')) {
+    throw new BadRequestError('O Bling não está conectado.')
+  }
+  const res = bling.call($app, rec, 'GET', '/naturezas-operacoes?limite=100')
+  if (res.statusCode !== 200) {
+    throw new BadRequestError('O Bling não respondeu: ' + bling.describe(res))
+  }
+  const items = []
+  const data = (res.json && res.json.data) || []
+  for (let i = 0; i < data.length; i++) {
+    items.push({
+      id: Number(data[i].id),
+      name: String(data[i].descricao || ''),
+      active: Number(data[i].situacao) !== 0,
+      standard: !!data[i].padrao,
+    })
+  }
+  let lastUsedId = 0
+  try {
+    const last = bling.call($app, rec, 'GET', '/nfe?tipo=1&pagina=1&limite=1')
+    const first = last.json && last.json.data && last.json.data[0]
+    if (first && first.naturezaOperacao) lastUsedId = Number(first.naturezaOperacao.id) || 0
+  } catch (_) {}
+  return e.json(200, { items: items, lastUsedId: lastUsedId })
+})
+
+// { natureza_id, natureza_name, ncm_default }: como as notas saem.
+routerAdd('POST', '/backend/v1/bling/nfe-settings', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador configura o Bling.')
+  }
+  const bling = require(`${__hooks}/lib/bling.js`)
+  const rec = bling.find($app, auth.getString('org'))
+  if (!rec || !rec.getString('refresh_token')) {
+    throw new BadRequestError('Conecte o Bling antes de configurar as notas.')
+  }
+  const body = e.requestInfo().body || {}
+  const id = Number(body.natureza_id)
+  if (!(id > 0) || Math.floor(id) !== id) {
+    throw new BadRequestError('Escolha a natureza de operação.')
+  }
+  const ncm = String(body.ncm_default || '').replace(/\D/g, '')
+  if (ncm.length !== 8) throw new BadRequestError('O NCM padrão tem 8 números (ex.: 8711.60.00).')
+  rec.set('nfe_natureza_id', id)
+  rec.set('nfe_natureza_name', String(body.natureza_name || '').slice(0, 200))
+  rec.set('nfe_ncm_default', ncm.slice(0, 4) + '.' + ncm.slice(4, 6) + '.' + ncm.slice(6))
+  $app.save(rec)
+  bling.audit(
+    $app,
+    rec,
+    auth,
+    e.realIP(),
+    'Notas pelo Bling: natureza ' +
+      (rec.getString('nfe_natureza_name') || id) +
+      ', NCM padrão ' +
+      rec.getString('nfe_ncm_default'),
+  )
+  return e.json(200, bling.status($app, rec))
+})
+
 // A cada hora: renova quem vence nas próximas 2 horas (o token dura ~6 h).
 cronAdd('bling_refresh', '23 * * * *', () => {
   const bling = require(`${__hooks}/lib/bling.js`)

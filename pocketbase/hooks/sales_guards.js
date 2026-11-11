@@ -7,10 +7,28 @@
  * A nota fiscal só é anexada a uma venda confirmada pelo administrador.
  * O superusuário (painel do Skip) não passa por estas travas.
  */
+// Campos da NF-e automática (pocketbase/hooks/lib/nfe.js): só o servidor
+// grava. (Os handlers rodam isolados: a lista vai dentro de cada um.)
 onRecordCreateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next()
+  const NF_FIELDS = [
+    'nf_status',
+    'nf_error',
+    'nf_bling_id',
+    'nf_key',
+    'nf_started_at',
+    'nf_issued_at',
+  ]
   if (e.record.getString('status') !== 'rascunho') {
     throw new ForbiddenError('Venda nova pela API só como rascunho. Use o botão de enviar a venda.')
+  }
+  for (const field of NF_FIELDS) {
+    if (!e.record.collection().fields.getByName(field)) continue
+    const filled =
+      field === 'nf_started_at' ? e.record.getFloat(field) !== 0 : e.record.getString(field) !== ''
+    if (filled) {
+      throw new ForbiddenError('A situação da nota fiscal é gravada só pelo servidor.')
+    }
   }
   return e.next()
 }, 'sales')
@@ -59,13 +77,29 @@ onRecordUpdateRequest((e) => {
       }
     }
   }
-  if (
-    e.record.getString('invoice_number') !== before.getString('invoice_number') &&
-    status !== 'confirmada'
-  ) {
+  const NF_FIELDS = [
+    'nf_status',
+    'nf_error',
+    'nf_bling_id',
+    'nf_key',
+    'nf_started_at',
+    'nf_issued_at',
+  ]
+  for (const field of NF_FIELDS) {
+    if (!e.record.collection().fields.getByName(field)) continue
+    if (String(e.record.get(field)) !== String(before.get(field))) {
+      throw new ForbiddenError('A situação da nota fiscal é gravada só pelo servidor.')
+    }
+  }
+  const invoiceChanged = e.record.getString('invoice_number') !== before.getString('invoice_number')
+  if (invoiceChanged && status !== 'confirmada') {
     throw new ForbiddenError(
       'O número da NF só entra depois que o administrador confirmar a venda.',
     )
+  }
+  // Nota emitida pelo Bling: o número vem da Sefaz.
+  if (invoiceChanged && before.getString('nf_status')) {
+    throw new ForbiddenError('O número desta NF vem do Bling e não muda à mão.')
   }
   return e.next()
 }, 'sales')

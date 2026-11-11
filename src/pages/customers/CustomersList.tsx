@@ -35,6 +35,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import AddressFields, {
+  emptyAddress,
+  formatAddress,
+  type AddressValue,
+} from '@/components/AddressFields'
 
 export default function CustomersList() {
   const { user, isAdmin, organization } = useAuth()
@@ -48,7 +53,7 @@ export default function CustomersList() {
   const [cPhone, setCPhone] = useState('')
   const [cDoc, setCDoc] = useState('')
   const [cEmail, setCEmail] = useState('')
-  const [cAddress, setCAddress] = useState('')
+  const [cAddr, setCAddr] = useState<AddressValue>(emptyAddress)
   const [cNotes, setCNotes] = useState('')
 
   // Duplicate Check warning
@@ -101,7 +106,8 @@ export default function CustomersList() {
         phone: normPhone,
         document: normDoc || undefined,
         email: cEmail.trim() || undefined,
-        address: cAddress.trim() || undefined,
+        ...cAddr,
+        address: formatAddress(cAddr) || undefined,
         notes: cNotes.trim() || undefined,
         created_by: user?.id,
       })
@@ -113,7 +119,7 @@ export default function CustomersList() {
       setCPhone('')
       setCDoc('')
       setCEmail('')
-      setCAddress('')
+      setCAddr(emptyAddress)
       setCNotes('')
       loadCustomers()
     } catch (err: any) {
@@ -286,13 +292,11 @@ export default function CustomersList() {
               />
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Endereço de Entrega</Label>
-              <Input
-                value={cAddress}
-                onChange={(e) => setCAddress(e.target.value)}
-                placeholder="Rua, número, bairro, cidade/UF"
-              />
+            <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+              <p className="text-xs font-semibold text-gray-700">
+                Endereço (sai na nota fiscal; com o CEP, o resto completa sozinho)
+              </p>
+              <AddressFields idPrefix="novo-cliente" value={cAddr} onChange={setCAddr} />
             </div>
 
             <div className="space-y-1">

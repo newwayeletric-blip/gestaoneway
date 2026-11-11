@@ -11,7 +11,8 @@
  *   PRODUCT_PHOTO_SOURCES troca a lista, separada por vírgula), para o
  *   servidor não buscar arquivos em qualquer lugar.
  * Linha: { sku, nome, marca?, categoria?, descricao?, preco_venda?, custo?,
- *          pede_chassi? ("sim"/"não"), limite_desconto? (% próprio do produto) }
+ *          pede_chassi? ("sim"/"não"), limite_desconto? (% próprio do produto),
+ *          ncm? (8 números, para a NF-e; vazio usa o padrão da aba Bling) }
  */
 routerAdd('POST', '/backend/v1/products/import', (e) => {
   const auth = e.auth
@@ -66,6 +67,12 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
     const discountLimit = limitText ? Number(limitText) : null
     if (discountLimit !== null && !(discountLimit >= 0 && discountLimit <= 100))
       errors.push('"limite_desconto" deve ser de 0 a 100')
+    const ncmDigits = text(r.ncm).replace(/\D/g, '')
+    if (text(r.ncm) && ncmDigits.length !== 8) errors.push('"ncm" deve ter 8 números')
+    const ncm =
+      ncmDigits.length === 8
+        ? ncmDigits.slice(0, 4) + '.' + ncmDigits.slice(4, 6) + '.' + ncmDigits.slice(6)
+        : ''
     if (sku) seen[sku] = seen[sku] || line
 
     let existing = null
@@ -98,6 +105,7 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         cost: cost,
         chassi: chassi,
         discountLimit: discountLimit,
+        ncm: ncm,
       })
     }
   }
@@ -152,6 +160,7 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         rec.set('discount_limit_custom', true)
         rec.set('discount_limit_pct', p.discountLimit)
       }
+      if (p.ncm) rec.set('ncm', p.ncm)
       tx.save(rec)
       p.result.product = rec.id
     }

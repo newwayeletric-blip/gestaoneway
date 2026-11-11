@@ -60,6 +60,14 @@ import { Badge } from '@/components/ui/badge'
 import { formatBRL } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
+import { nfMessage } from '@/lib/nf'
+import AddressFields, {
+  addressFromCustomer,
+  emptyAddress,
+  formatAddress,
+  missingForNf,
+  type AddressValue,
+} from '@/components/AddressFields'
 
 interface CartItem {
   id: string
@@ -143,6 +151,10 @@ export function NewSale() {
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
   const [newCustomerDoc, setNewCustomerDoc] = useState('')
   const [newCustomerEmail, setNewCustomerEmail] = useState('')
+  const [newCustomerAddr, setNewCustomerAddr] = useState<AddressValue>(emptyAddress)
+  // Completar o endereço do cliente escolhido (a NF-e precisa dele).
+  const [fixAddr, setFixAddr] = useState<AddressValue | null>(null)
+  const [isSavingAddr, setIsSavingAddr] = useState(false)
 
   // Authorization for pending balance
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
@@ -497,6 +509,8 @@ export function NewSale() {
         phone: newCustomerPhone,
         document: newCustomerDoc,
         email: newCustomerEmail,
+        ...newCustomerAddr,
+        address: formatAddress(newCustomerAddr) || undefined,
       })
       setSelectedCustomer(created)
       setIsCustomerModalOpen(false)
@@ -504,6 +518,7 @@ export function NewSale() {
       setNewCustomerPhone('')
       setNewCustomerDoc('')
       setNewCustomerEmail('')
+      setNewCustomerAddr(emptyAddress)
       toast({ title: 'Cliente cadastrado com sucesso!' })
     } catch (err: any) {
       toast({
@@ -513,6 +528,30 @@ export function NewSale() {
       })
     }
   }
+
+  const handleSaveCustomerAddress = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedCustomer || !fixAddr) return
+    setIsSavingAddr(true)
+    try {
+      const updated = await CustomersService.update(selectedCustomer.id, {
+        ...fixAddr,
+        address: formatAddress(fixAddr) || selectedCustomer.address || undefined,
+      })
+      setSelectedCustomer(updated)
+      setFixAddr(null)
+      toast({ title: 'Endereço do cliente salvo!' })
+    } catch (err: any) {
+      toast({
+        title: 'Não foi possível salvar o endereço',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingAddr(false)
+    }
+  }
+  const nfMissing = selectedCustomer ? missingForNf(selectedCustomer) : []
 
   // Regra do dono: a venda do vendedor espera o administrador antes da NF.
   // O servidor reserva o estoque e numera a venda; a venda lançada pelo
@@ -585,11 +624,15 @@ export function NewSale() {
       })
 
       let status = res.status
+      let nf: ReturnType<typeof nfMessage> = null
       if (confirmsDirectly && status === 'aguardando_aprovacao') {
         try {
-          status = (
-            await SalesService.approveSale(res.id, allowPendingBalance ? authReason.trim() : '')
-          ).status
+          const approved = await SalesService.approveSale(
+            res.id,
+            allowPendingBalance ? authReason.trim() : '',
+          )
+          status = approved.status
+          nf = nfMessage(approved.nf)
         } catch (err: any) {
           toast({
             title: `Venda ${res.number} enviada, mas não foi confirmada`,
@@ -601,7 +644,7 @@ export function NewSale() {
 
       toast(
         status === 'confirmada'
-          ? { title: `Venda ${res.number} confirmada` }
+          ? { title: `Venda ${res.number} confirmada`, description: nf?.text, variant: nf?.variant }
           : { title: `Venda ${res.number} enviada para aprovação` },
       )
       setCompletedSale({ id: res.id, number: res.number, status })
@@ -769,7 +812,29 @@ export function NewSale() {
                     Alterar
                   </Button>
                 </div>
-              ) : (
+              ) : null}
+              {selectedCustomer && nfMissing.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <span>
+                    Para a nota fiscal sair, falta: {nfMissing.join(', ')}.
+                    {nfMissing.includes('CPF/CNPJ') && !isAdmin && (
+                      <> O CPF/CNPJ o administrador completa na ficha do cliente.</>
+                    )}
+                  </span>
+                  {nfMissing.some((m) => m !== 'CPF/CNPJ') && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 bg-white text-xs"
+                      onClick={() => setFixAddr(addressFromCustomer(selectedCustomer))}
+                    >
+                      Completar endereço
+                    </Button>
+                  )}
+                </div>
+              )}
+              {!selectedCustomer && (
                 <div className="space-y-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1395,12 +1460,49 @@ export function NewSale() {
                   className="mt-1"
                 />
               </div>
+              <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+                <p className="text-xs font-semibold text-gray-700">
+                  Endereço (sai na nota fiscal; com o CEP, o resto completa sozinho)
+                </p>
+                <AddressFields
+                  idPrefix="venda-cliente"
+                  value={newCustomerAddr}
+                  onChange={setNewCustomerAddr}
+                />
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCustomerModalOpen(false)}>
                 Cancelar
               </Button>
               <Button type="submit">Cadastrar e Vincular</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: COMPLETAR O ENDEREÇO DO CLIENTE (para a NF-e) */}
+      <Dialog open={!!fixAddr} onOpenChange={(open) => !open && setFixAddr(null)}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleSaveCustomerAddress}>
+            <DialogHeader>
+              <DialogTitle>Endereço de {selectedCustomer?.name}</DialogTitle>
+              <DialogDescription>
+                A nota fiscal sai com este endereço. Digite o CEP e o resto completa sozinho.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-3">
+              {fixAddr && (
+                <AddressFields idPrefix="completar" value={fixAddr} onChange={setFixAddr} />
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setFixAddr(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSavingAddr}>
+                {isSavingAddr ? 'Salvando...' : 'Salvar endereço'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

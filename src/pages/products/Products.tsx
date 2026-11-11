@@ -64,6 +64,8 @@ export default function Products() {
   const [pTrackSerial, setPTrackSerial] = useState(true)
   // Em branco: vale o limite geral de desconto das Configurações.
   const [pDiscountLimit, setPDiscountLimit] = useState('')
+  // NCM da nota fiscal; em branco usa o padrão da aba Bling (8711.60.00).
+  const [pNcm, setPNcm] = useState('')
 
   const { toast } = useToast()
 
@@ -108,6 +110,7 @@ export default function Products() {
     setPDesc('')
     setPTrackSerial(true)
     setPDiscountLimit('')
+    setPNcm('')
     setIsModalOpen(true)
   }
 
@@ -124,6 +127,7 @@ export default function Products() {
     setPDesc(p.description || '')
     setPTrackSerial(!!p.track_serial)
     setPDiscountLimit(p.discount_limit_custom ? String(p.discount_limit_pct ?? 0) : '')
+    setPNcm(p.ncm || '')
     setIsModalOpen(true)
   }
 
@@ -148,6 +152,15 @@ export default function Products() {
       })
       return
     }
+    const ncmDigits = pNcm.replace(/\D/g, '')
+    if (ncmDigits && ncmDigits.length !== 8) {
+      toast({
+        title: 'NCM inválido',
+        description: 'O NCM tem 8 números (ex.: 8711.60.00). Em branco, usa o padrão da aba Bling.',
+        variant: 'destructive',
+      })
+      return
+    }
 
     const data = {
       name: pName.trim(),
@@ -162,6 +175,9 @@ export default function Products() {
       track_serial: pTrackSerial,
       discount_limit_custom: pDiscountLimit !== '',
       discount_limit_pct: pDiscountLimit !== '' ? limit : 0,
+      ncm: ncmDigits
+        ? `${ncmDigits.slice(0, 4)}.${ncmDigits.slice(4, 6)}.${ncmDigits.slice(6)}`
+        : '',
     }
     try {
       if (editingId) {
@@ -479,6 +495,23 @@ export default function Products() {
                 />
                 <p className="text-[11px] text-gray-500">
                   Acima do limite, a venda vai para o administrador aprovar.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="pNcm" className="text-xs font-semibold">
+                  NCM (nota fiscal)
+                </Label>
+                <Input
+                  id="pNcm"
+                  inputMode="numeric"
+                  value={pNcm}
+                  onChange={(e) => setPNcm(e.target.value)}
+                  placeholder="Em branco: usa o padrão da aba Bling (8711.60.00)"
+                />
+                <p className="text-[11px] text-gray-500">
+                  Patinete elétrico: 8711.60.00. Acessórios e peças podem ter outro: confira com o
+                  contador.
                 </p>
               </div>
 

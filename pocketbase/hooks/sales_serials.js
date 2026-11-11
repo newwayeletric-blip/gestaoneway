@@ -82,7 +82,7 @@ routerAdd('GET', '/backend/v1/serials', (e) => {
       customer_name: customer ? customer.getString('name') : '',
       customer_phone: customer ? customer.getString('phone') : '',
       customer_document: customer ? customer.getString('document') : '',
-      has_nf: nf.length > 0,
+      has_nf: nf.length > 0 || sale.getString('nf_status') === 'autorizada',
     })
   }
   return e.json(200, { items: out })
@@ -125,6 +125,9 @@ routerAdd('POST', '/backend/v1/sales/{id}/serials', (e) => {
   )
   if (nf.length > 0) {
     throw new BadRequestError('A NF desta venda já foi anexada: o chassi não muda mais por aqui.')
+  }
+  if (['emitindo', 'autorizada'].indexOf(sale.getString('nf_status')) >= 0) {
+    throw new BadRequestError('A NF desta venda já foi para a Sefaz: o chassi não muda mais.')
   }
 
   const body = e.requestInfo().body || {}

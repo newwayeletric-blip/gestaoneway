@@ -117,6 +117,7 @@ export interface ProductRecord {
   // Limite de desconto próprio; sem ele, vale o geral das Configurações.
   discount_limit_custom?: boolean
   discount_limit_pct?: number
+  ncm?: string // vazio usa o NCM padrão da aba Bling
   commission_rate?: number
   created_by?: string
   created: string
@@ -231,6 +232,14 @@ export interface CustomerRecord {
   document?: string
   email?: string
   address?: string
+  // Endereço separado, como a NF-e pede (migration 0019).
+  cep?: string
+  street?: string
+  street_number?: string
+  complement?: string
+  district?: string
+  city?: string
+  uf?: string
   notes?: string
   created_by?: string
   created: string
@@ -253,6 +262,10 @@ export type SalePaymentStatus = 'pendente' | 'parcial' | 'pago'
 export type SaleDeliveryStatus = 'pendente' | 'entregue'
 export type PaymentMethod = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito'
 
+// NF-e pelo Bling: aguardando_admin (gerente aprovou), emitindo (na Sefaz),
+// autorizada ou erro (motivo em nf_error). Vazio: sem Bling, NF à mão.
+export type SaleNfStatus = '' | 'aguardando_admin' | 'emitindo' | 'autorizada' | 'erro'
+
 export interface SaleRecord {
   id: string
   number: string
@@ -272,6 +285,10 @@ export interface SaleRecord {
   installments?: number
   observation?: string
   invoice_number?: string
+  nf_status?: SaleNfStatus
+  nf_error?: string
+  nf_key?: string
+  nf_issued_at?: string
   authorized_by?: string
   authorization_note?: string
   cancellation_reason?: string

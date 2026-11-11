@@ -58,14 +58,21 @@ function find(app, orgId) {
   return rows.length > 0 ? rows[0] : null
 }
 
+// Motivo legível de uma resposta de erro do Bling ({ error: { message,
+// description, fields: [{ msg }] } }), com o detalhe de cada campo.
 function describe(res) {
   const j = res.json || {}
   const err = j.error || {}
-  return (
-    (typeof err === 'string' ? err : err.description || err.message || err.type || '') ||
-    j.error_description ||
-    'HTTP ' + res.statusCode
-  )
+  if (typeof err === 'string') return err
+  const parts = []
+  const main = err.description || err.message || err.type || j.error_description || ''
+  if (main) parts.push(String(main))
+  const fields = err.fields || []
+  for (let i = 0; i < fields.length && i < 5; i++) {
+    const msg = fields[i] && (fields[i].msg || fields[i].message)
+    if (msg && parts.indexOf(String(msg)) === -1) parts.push(String(msg))
+  }
+  return parts.length ? parts.join(' — ') : 'HTTP ' + res.statusCode
 }
 
 // Pede tokens ao Bling (código da autorização ou renovação) e grava no registro.
@@ -188,6 +195,9 @@ function status(app, rec) {
     lastRefreshAt: rec ? rec.getFloat('last_refresh_at') : 0,
     tokenExpiresAt: rec ? rec.getFloat('token_expires_at') : 0,
     lastError: rec ? rec.getString('last_error') : '',
+    nfeNaturezaId: rec ? rec.getFloat('nfe_natureza_id') : 0,
+    nfeNaturezaName: rec ? rec.getString('nfe_natureza_name') : '',
+    nfeNcmDefault: (rec && rec.getString('nfe_ncm_default')) || '8711.60.00',
   }
 }
 

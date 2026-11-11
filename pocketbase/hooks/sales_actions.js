@@ -138,6 +138,11 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
     if (pending > 0 && note.length < 5) {
       fail('note', 'Explique por que a venda pode ser aprovada com saldo pendente.')
     }
+    // NF-e pelo Bling (dono, 11/11/2026): com o Bling conectado, a aprovação
+    // do administrador já manda a nota para a Sefaz (depois da transação, que
+    // não espera a internet); a do gerente deixa a nota esperando o admin.
+    const nfe = require(`${__hooks}/lib/nfe.js`)
+    const blingConnected = !!nfe.connection($app, sale.getString('org'))
     $app.runInTransaction((tx) => {
       const s = lockedStatus(tx, 'aguardando_aprovacao')
       let seller = null
@@ -199,6 +204,7 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
       s.set('confirmed_at', new DateTime())
       if (note) s.set('authorization_note', note)
       if (!fullyPaid) s.set('authorized_by', auth.id)
+      if (blingConnected) s.set('nf_status', 'aguardando_admin')
       tx.save(s)
 
       if (value > 0) {
@@ -239,7 +245,8 @@ routerAdd('POST', '/backend/v1/sales/{id}/{action}', (e) => {
         { status: 'confirmada', payment_status: fullyPaid ? 'pago' : 'parcial' },
       )
     })
-    return e.json(200, { id: sale.id, number: number, status: 'confirmada' })
+    const nf = blingConnected && !isManager ? nfe.emit($app, sale.id, auth.id, e.realIP()) : null
+    return e.json(200, { id: sale.id, number: number, status: 'confirmada', nf: nf })
   }
 
   const reason = text(body.reason)

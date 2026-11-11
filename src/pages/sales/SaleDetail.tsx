@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -19,6 +19,8 @@ import {
   Truck,
   Trash2,
   Hash,
+  Send,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { SalesService, FinancialService } from '@/services/api'
@@ -56,6 +58,7 @@ import { saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
 import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
 import { openProtectedFile } from '@/lib/pocketbase/client'
+import { nfMessage } from '@/lib/nf'
 
 export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
@@ -117,6 +120,10 @@ export function SaleDetail() {
   >('nota_fiscal')
   const [isUploadingDoc, setIsUploadingDoc] = useState(false)
 
+  // NF-e pelo Bling (só o administrador libera): o que falta para sair.
+  const [nfCheck, setNfCheck] = useState<{ connected: boolean; problems: string[] } | null>(null)
+  const [isEmitting, setIsEmitting] = useState(false)
+
   const loadData = async () => {
     if (!id) return
     try {
@@ -135,6 +142,11 @@ export function SaleDetail() {
       if (isAdmin) {
         const accs = await FinancialService.listAccounts()
         setAccounts(accs.filter((a) => a.active))
+        const nfOpen =
+          saleData.status === 'aguardando_aprovacao' ||
+          (saleData.status === 'confirmada' &&
+            !['autorizada', 'emitindo'].includes(saleData.nf_status || ''))
+        setNfCheck(nfOpen ? await SalesService.checkNfe(id).catch(() => null) : null)
       }
     } catch (err: any) {
       toast({
@@ -150,6 +162,35 @@ export function SaleDetail() {
   useEffect(() => {
     loadData()
   }, [id, isAdmin])
+
+  // Nota na fila da Sefaz: confere a situação a cada 20 segundos.
+  useEffect(() => {
+    if (!id || sale?.nf_status !== 'emitindo') return
+    const timer = setInterval(() => {
+      SalesService.getById(id)
+        .then((s) => {
+          setSale(s)
+          if (s.nf_status !== 'emitindo') SalesService.getDocuments(id).then(setDocuments)
+        })
+        .catch(() => {})
+    }, 20000)
+    return () => clearInterval(timer)
+  }, [id, sale?.nf_status])
+
+  // Emite, tenta de novo ou atualiza a NF-e (só o administrador).
+  const handleEmitNfe = async () => {
+    if (!sale) return
+    setIsEmitting(true)
+    try {
+      const nf = nfMessage(await SalesService.emitNfe(sale.id))
+      if (nf) toast({ title: `Venda ${sale.number}`, description: nf.text, variant: nf.variant })
+      loadData()
+    } catch (err: any) {
+      toast({ title: 'A NF-e não saiu', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsEmitting(false)
+    }
+  }
 
   // Open Return Modal
   const handleOpenReturnModal = () => {
@@ -179,10 +220,16 @@ export function SaleDetail() {
     if (!sale) return
     setIsDeciding(true)
     try {
-      await SalesService.approveSale(sale.id, approvalNote.trim())
+      const res = await SalesService.approveSale(sale.id, approvalNote.trim())
+      const nf = nfMessage(res.nf)
       toast({
         title: `Venda ${sale.number} aprovada`,
-        description: 'A nota fiscal já pode ser emitida.',
+        description:
+          nf?.text ||
+          (isManager
+            ? 'A nota fiscal sai quando o administrador liberar.'
+            : 'A nota fiscal já pode ser emitida e anexada.'),
+        variant: nf?.variant,
       })
       setApprovalNote('')
       loadData()
@@ -541,8 +588,21 @@ export function SaleDetail() {
                 </p>
                 <p>
                   O produto já está reservado. Ao aprovar, a venda é confirmada, a comissão é
-                  calculada e a nota fiscal pode ser emitida.
+                  calculada e{' '}
+                  {isAdmin && nfCheck?.connected
+                    ? 'a nota fiscal vai direto para a Sefaz pelo Bling.'
+                    : isAdmin
+                      ? 'a nota fiscal pode ser emitida.'
+                      : 'a nota fiscal sai quando o administrador liberar.'}
                 </p>
+                {isAdmin && nfCheck?.connected && nfCheck.problems.length > 0 && (
+                  <p className="rounded-md border border-red-200 bg-white px-2 py-1.5 font-medium text-red-700">
+                    A nota fiscal não vai sair enquanto faltar: {nfCheck.problems.join('; ')}.{' '}
+                    <Link to={`/clientes/${sale.customer}`} className="underline">
+                      Abrir a ficha do cliente
+                    </Link>
+                  </p>
+                )}
                 {sale.discount_over_limit && (
                   <p className="font-medium text-amber-900">
                     Desconto de {formatBRL(sale.total_discount)}
@@ -612,8 +672,108 @@ export function SaleDetail() {
                 {sale.expand?.confirmed_by?.name ? ` por ${sale.expand.confirmed_by.name}` : ''}
                 {sale.confirmed_at ? ` em ${formatDateBR(sale.confirmed_at, true)}` : ''}
               </p>
-              <p className="mt-0.5">A nota fiscal pode ser emitida e anexada nesta venda.</p>
+              {!sale.nf_status && (
+                <p className="mt-0.5">A nota fiscal pode ser emitida e anexada nesta venda.</p>
+              )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* NF-e pelo Bling: situação da nota e o botão do administrador. */}
+      {isConfirmed && sale.nf_status && (
+        <Card
+          className={
+            sale.nf_status === 'autorizada'
+              ? 'border-emerald-300 bg-white'
+              : sale.nf_status === 'erro'
+                ? 'border-red-300 bg-red-50/50'
+                : 'border-sky-300 bg-sky-50/50'
+          }
+        >
+          <CardContent className="pt-4 flex flex-col gap-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              {sale.nf_status === 'autorizada' ? (
+                <FileCheck className="h-5 w-5 shrink-0 mt-0.5 text-[#0A8F5C]" />
+              ) : sale.nf_status === 'erro' ? (
+                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+              ) : (
+                <Clock className="h-5 w-5 shrink-0 mt-0.5 text-sky-700" />
+              )}
+              <div className="space-y-0.5">
+                {sale.nf_status === 'autorizada' && (
+                  <>
+                    <p className="font-semibold text-emerald-900">
+                      NF-e nº {sale.invoice_number} autorizada pela Sefaz
+                      {sale.nf_issued_at ? ` em ${formatDateBR(sale.nf_issued_at, true)}` : ''}
+                    </p>
+                    <p className="text-gray-600">O PDF e o XML estão na aba Documentos e NF.</p>
+                    {sale.nf_key && (
+                      <p className="break-all text-xs text-gray-500">Chave: {sale.nf_key}</p>
+                    )}
+                    {sale.nf_error && <p className="text-amber-700">{sale.nf_error}</p>}
+                  </>
+                )}
+                {sale.nf_status === 'emitindo' && (
+                  <>
+                    <p className="font-semibold text-sky-900">NF-e enviada para a Sefaz</p>
+                    <p className="text-sky-900">
+                      A Sefaz ainda está processando. Esta tela atualiza sozinha.
+                    </p>
+                  </>
+                )}
+                {sale.nf_status === 'aguardando_admin' && (
+                  <>
+                    <p className="font-semibold text-sky-900">
+                      NF-e esperando o administrador liberar
+                    </p>
+                    <p className="text-sky-900">
+                      A venda foi aprovada pelo gerente da loja. A nota sai quando o administrador
+                      clicar em Emitir NF-e.
+                    </p>
+                  </>
+                )}
+                {sale.nf_status === 'erro' && (
+                  <>
+                    <p className="font-semibold text-red-800">A NF-e não saiu</p>
+                    <p className="text-red-800">{sale.nf_error}</p>
+                    {isAdmin && (nfCheck?.problems.length || 0) > 0 && (
+                      <Link to={`/clientes/${sale.customer}`} className="text-red-800 underline">
+                        Abrir a ficha do cliente para completar
+                      </Link>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            {isAdmin && (sale.nf_status !== 'autorizada' || !!sale.nf_error) && (
+              <Button
+                size="sm"
+                onClick={handleEmitNfe}
+                disabled={isEmitting}
+                variant={sale.nf_status === 'autorizada' ? 'outline' : 'default'}
+                className={
+                  sale.nf_status === 'autorizada'
+                    ? 'shrink-0'
+                    : 'shrink-0 bg-[#0A8F5C] hover:bg-[#087A4D] text-white'
+                }
+              >
+                {sale.nf_status === 'aguardando_admin' ? (
+                  <Send className="h-4 w-4 mr-1.5" />
+                ) : (
+                  <RefreshCw className={`h-4 w-4 mr-1.5 ${isEmitting ? 'animate-spin' : ''}`} />
+                )}
+                {isEmitting
+                  ? 'Aguarde...'
+                  : sale.nf_status === 'aguardando_admin'
+                    ? 'Emitir NF-e'
+                    : sale.nf_status === 'erro'
+                      ? 'Tentar de novo'
+                      : sale.nf_status === 'emitindo'
+                        ? 'Atualizar'
+                        : 'Buscar PDF e XML'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -660,7 +820,7 @@ export function SaleDetail() {
 
       {/* Details Grid */}
       <Tabs defaultValue="detalhes" className="space-y-4">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="detalhes">Detalhes e Itens</TabsTrigger>
           <TabsTrigger value="recibo">Recibo e Comprovante</TabsTrigger>
           <TabsTrigger value="documentos">Documentos e NF ({documents.length})</TabsTrigger>
@@ -760,7 +920,8 @@ export function SaleDetail() {
                 </CardTitle>
                 {canApprove &&
                   (isPending || isConfirmed) &&
-                  !documents.some((d) => d.doc_type === 'nota_fiscal') && (
+                  !documents.some((d) => d.doc_type === 'nota_fiscal') &&
+                  !['emitindo', 'autorizada'].includes(sale.nf_status || '') && (
                     <Button size="sm" variant="outline" onClick={handleOpenSerials}>
                       <Hash className="h-3.5 w-3.5 mr-1.5" /> Corrigir chassi
                     </Button>

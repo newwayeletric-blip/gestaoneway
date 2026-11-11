@@ -28,6 +28,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import AddressFields, {
+  addressFromCustomer,
+  emptyAddress,
+  formatAddress,
+  missingForNf,
+  type AddressValue,
+} from '@/components/AddressFields'
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>()
@@ -43,7 +50,7 @@ export default function CustomerDetail() {
   const [phone, setPhone] = useState('')
   const [doc, setDoc] = useState('')
   const [email, setEmail] = useState('')
-  const [address, setAddress] = useState('')
+  const [addr, setAddr] = useState<AddressValue>(emptyAddress)
   const [notes, setNotes] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -65,7 +72,7 @@ export default function CustomerDetail() {
       setPhone(cust.phone || '')
       setDoc(cust.document || '')
       setEmail(cust.email || '')
-      setAddress(cust.address || '')
+      setAddr(addressFromCustomer(cust))
       setNotes(cust.notes || '')
 
       // Carregar documentos vinculados às compras do cliente
@@ -107,7 +114,9 @@ export default function CustomerDetail() {
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim() || undefined,
-      address: address.trim() || undefined,
+      ...addr,
+      // O texto antigo fica enquanto o endereço separado não for preenchido.
+      address: formatAddress(addr) || customer?.address || undefined,
       notes: notes.trim() || undefined,
     }
 
@@ -236,13 +245,22 @@ export default function CustomerDetail() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Endereço</Label>
-                <Input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Endereço de entrega"
-                />
+              <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+                <p className="text-xs font-semibold text-gray-700">
+                  Endereço (sai na nota fiscal; com o CEP, o resto completa sozinho)
+                </p>
+                {customer?.address && !customer.street && (
+                  <p className="text-[11px] text-gray-500">
+                    Endereço anotado antes: {customer.address}
+                  </p>
+                )}
+                <AddressFields idPrefix="cliente" value={addr} onChange={setAddr} />
+                {customer && missingForNf({ ...customer, ...addr }).length > 0 && (
+                  <p className="text-[11px] text-amber-700">
+                    Para a nota fiscal sair, falta:{' '}
+                    {missingForNf({ ...customer, ...addr }).join(', ')}.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">
