@@ -1,0 +1,19 @@
+# HTTPS do servidor de dados. O certificado sai sozinho (Let's Encrypt, com
+# ZeroSSL de reserva). Enquanto o domínio próprio não chega, vale o nome que
+# a Hostinger dá ao VPS; para trocar, defina DOMINIO_DADOS no .env do VPS.
+{$DOMINIO_DADOS:srv1948787.hstgr.cloud} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	request_body {
+		max_size 60MB
+	}
+
+	reverse_proxy pocketbase:8090
+}

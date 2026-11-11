@@ -1,6 +1,7 @@
 # Servidor de dados do sistema de gestão no VPS (/docker/gestaoneway).
 # O PocketBase só escuta em 127.0.0.1:8091; quem fala com a internet é o
-# Caddy (HTTPS), que entra quando o domínio estiver apontado.
+# Caddy, com HTTPS. Segredos (SETUP_TOKEN, DOMINIO_DADOS) ficam no .env do
+# VPS, fora do repositório.
 name: gestaoneway
 
 services:
@@ -9,6 +10,8 @@ services:
     restart: unless-stopped
     ports:
       - '127.0.0.1:8091:8090'
+    environment:
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
     volumes:
       - ./pb_data:/pb/pb_data
       - ./pb_hooks:/pb/pb_hooks:ro
@@ -18,3 +21,27 @@ services:
       options:
         max-size: 10m
         max-file: '5'
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      - pocketbase
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMINIO_DADOS: ${DOMINIO_DADOS:-srv1948787.hstgr.cloud}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
+
+volumes:
+  caddy_data:
+  caddy_config:
