@@ -42,6 +42,28 @@ services:
         max-size: 10m
         max-file: '5'
 
+  # Cópia em tempo real para a nuvem. Só sobe com o perfil "nuvem", que o
+  # publicar.sh liga quando o backup.env (chaves) já existe no VPS.
+  litestream:
+    image: litestream/litestream:0.3.13
+    profiles: ['nuvem']
+    restart: unless-stopped
+    user: '10001:10001'
+    depends_on:
+      - pocketbase
+    command: replicate -config /etc/litestream.yml
+    env_file:
+      - path: ./backup.env
+        required: false
+    volumes:
+      - ./pb_data:/pb_data
+      - ./litestream.yml:/etc/litestream.yml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
+
 volumes:
   caddy_data:
   caddy_config:

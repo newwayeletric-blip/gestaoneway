@@ -1,0 +1,18 @@
+# Cópia em tempo real do banco (data.db) para a nuvem: cada mudança sobe em
+# cerca de 1 segundo. As chaves vêm do backup.env do VPS (gravado pelo
+# gestaoneway-nuvem), nunca do repositório.
+# Restaurar: litestream restore -config /etc/litestream.yml -o /tmp/data.db /pb_data/data.db
+dbs:
+  - path: /pb_data/data.db
+    replicas:
+      - type: s3
+        endpoint: ${NUVEM_ENDPOINT}
+        bucket: ${NUVEM_BUCKET}
+        path: tempo-real/data.db
+        region: auto
+        force-path-style: true
+        access-key-id: ${NUVEM_ACCESS_KEY_ID}
+        secret-access-key: ${NUVEM_SECRET_ACCESS_KEY}
+        sync-interval: 1s
+        snapshot-interval: 24h
+        retention: 720h

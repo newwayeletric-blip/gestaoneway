@@ -18,13 +18,17 @@ for f in "$ROOT"/pocketbase/hooks/*.js; do
   cp "$f" "$stage/pb_hooks/$(basename "${f%.js}").pb.js"
 done
 cp "$ROOT"/pocketbase/migrations/*.js "$stage/pb_migrations/"
-cp "$ROOT"/deploy/servidor/Dockerfile "$ROOT"/deploy/servidor/docker-compose.yml "$stage/"
-[ -f "$ROOT/deploy/servidor/Caddyfile" ] && cp "$ROOT/deploy/servidor/Caddyfile" "$stage/"
+S="$ROOT/deploy/servidor"
+cp "$S/Dockerfile" "$S/docker-compose.yml" "$S/Caddyfile" "$S/litestream.yml" "$stage/"
+mkdir -p "$stage/.bin"
+cp "$S/backup-diario.sh" "$stage/.bin/gestaoneway-backup"
+cp "$S/nuvem-config.sh" "$stage/.bin/gestaoneway-nuvem"
 
 # Hooks e migrations são trocados por inteiro: arquivo apagado no
 # repositório também sai do servidor. Só o conteúdo das pastas é apagado:
 # o contêiner monta as próprias pastas, e uma pasta recriada ficaria fora
-# dele. pb_data nunca é tocado aqui.
+# dele. pb_data nunca é tocado aqui. A cópia em tempo real (perfil "nuvem")
+# só sobe quando o backup.env já existe.
 tar -C "$stage" -cf - . | "${SSH[@]}" "
   set -e
   mkdir -p $DEST/pb_data $DEST/pb_hooks $DEST/pb_migrations
@@ -32,6 +36,16 @@ tar -C "$stage" -cf - . | "${SSH[@]}" "
   tar -C $DEST --no-same-owner -xf -
   chown root:root $DEST
   chown -R 10001:10001 $DEST/pb_data
-  cd $DEST && docker compose up -d --build && docker compose restart pocketbase
+  install -m 700 $DEST/.bin/gestaoneway-backup /usr/local/bin/gestaoneway-backup.sh
+  install -m 700 $DEST/.bin/gestaoneway-nuvem /usr/local/bin/gestaoneway-nuvem
+  rm -rf $DEST/.bin
+  printf '%s\n' \
+    '15 * * * * root /usr/local/bin/gestaoneway-backup.sh hora >>/var/log/gestaoneway-backup.log 2>&1' \
+    '30 6 * * * root /usr/local/bin/gestaoneway-backup.sh dia >>/var/log/gestaoneway-backup.log 2>&1' \
+    >/etc/cron.d/gestaoneway-backup
+  cd $DEST
+  PERFIL=''
+  [ -f backup.env ] && PERFIL='--profile nuvem'
+  docker compose \$PERFIL up -d --build && docker compose restart pocketbase
 "
-"${SSH[@]}" "cd $DEST && docker compose ps && docker compose logs --tail=20 pocketbase"
+"${SSH[@]}" "cd $DEST && docker compose --profile nuvem ps && docker compose logs --tail=20 pocketbase"
