@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Printer, Search } from 'lucide-react'
-import { ProductsService } from '@/services/api'
+import { ArrowLeft, Boxes, Printer, Search } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { ProductsService, StockService } from '@/services/api'
 import type { ProductRecord } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatBRL } from '@/lib/formatters'
+import { code128Widths } from '@/lib/code128'
 
-// Etiquetas com QR Code por modelo (dono, 11/11/2026): o QR guarda o SKU, o
-// mesmo código que o leitor ou a câmera procuram na Nova venda. A página fica
-// fora do layout do sistema para imprimir só as etiquetas.
+// Etiquetas por modelo (dono, 11/11/2026): QR Code ou código de barras com o
+// SKU, o mesmo código que o leitor ou a câmera procuram na Nova venda.
+// Produto repetido leva a mesma etiqueta; a quantidade pode vir do estoque
+// (uma por unidade). A página fica fora do layout do sistema para imprimir só
+// as etiquetas.
 const LAYOUTS = {
   a4: {
     label: 'Folha A4: 21 etiquetas de 63,5 × 38,1 mm',
@@ -38,6 +42,39 @@ const LAYOUTS = {
   },
 } as const
 type LayoutKey = keyof typeof LAYOUTS
+type CodeKind = 'qr' | 'barras'
+
+// Código de barras em SVG, com a margem branca que o leitor precisa dos lados.
+function Barcode({ value, heightMm }: { value: string; heightMm: number }) {
+  const widths = useMemo(() => {
+    try {
+      return code128Widths(value)
+    } catch {
+      return null
+    }
+  }, [value])
+  if (!widths) return <p className="text-[7pt] text-red-600">Código com caractere inválido</p>
+  const quiet = 10
+  const total = widths.reduce((a, b) => a + b, 0) + quiet * 2
+  let x = quiet
+  return (
+    <svg
+      role="img"
+      aria-label={`Código de barras ${value}`}
+      viewBox={`0 0 ${total} 10`}
+      preserveAspectRatio="none"
+      shapeRendering="crispEdges"
+      style={{ width: '100%', height: `${heightMm}mm`, display: 'block' }}
+    >
+      <rect width={total} height="10" fill="#fff" />
+      {widths.map((w, i) => {
+        const bar = i % 2 === 0 ? <rect key={i} x={x} width={w} height="10" fill="#000" /> : null
+        x += w
+        return bar
+      })}
+    </svg>
+  )
+}
 
 export default function ProductLabels() {
   const [products, setProducts] = useState<ProductRecord[]>([])
@@ -45,7 +82,12 @@ export default function ProductLabels() {
   const [search, setSearch] = useState('')
   const [layout, setLayout] = useState<LayoutKey>('a4')
   const [showPrice, setShowPrice] = useState(false)
+  const [kind, setKind] = useState<CodeKind>('qr')
   const [qr, setQr] = useState<Record<string, string>>({})
+  const { stores } = useAuth()
+  const [stockStore, setStockStore] = useState('')
+  const [loadingStock, setLoadingStock] = useState(false)
+  const [stockNote, setStockNote] = useState('')
 
   useEffect(() => {
     ProductsService.list("status = 'ativo'")
@@ -84,6 +126,42 @@ export default function ProductLabels() {
   const setQty = (id: string, value: number) =>
     setQuantities((prev) => ({ ...prev, [id]: Math.max(0, Math.min(500, value || 0)) }))
 
+  // Uma etiqueta por unidade em estoque (na loja escolhida ou em todas).
+  const fillFromStock = async () => {
+    setLoadingStock(true)
+    try {
+      const items = await StockService.getStockItems(stockStore || undefined)
+      const byProduct: Record<string, number> = {}
+      for (const it of items) {
+        if (it.quantity > 0) byProduct[it.product] = (byProduct[it.product] || 0) + it.quantity
+      }
+      const next: Record<string, number> = {}
+      let units = 0
+      let noSku = 0
+      for (const p of products) {
+        const qty = Math.min(500, Math.floor(byProduct[p.id] || 0))
+        if (qty <= 0) continue
+        if (!p.sku) {
+          noSku++
+          continue
+        }
+        next[p.id] = qty
+        units += qty
+      }
+      setQuantities(next)
+      setStockNote(
+        units === 0
+          ? 'Nenhum produto com estoque nesta escolha.'
+          : `${units} etiqueta(s) de ${Object.keys(next).length} produto(s), uma por unidade em estoque.` +
+              (noSku ? ` ${noSku} produto(s) sem código ficaram de fora.` : ''),
+      )
+    } catch (err: any) {
+      setStockNote(`Não consegui ler o estoque: ${err.message}`)
+    } finally {
+      setLoadingStock(false)
+    }
+  }
+
   const size = LAYOUTS[layout]
   const qrSize = Math.min(size.height - 4, size.width * 0.45)
   // Uma folha (ou uma etiqueta térmica) por página impressa.
@@ -106,11 +184,12 @@ export default function ProductLabels() {
               <ArrowLeft className="mr-1 h-4 w-4" /> Produtos
             </Link>
             <h1 className="text-2xl font-bold tracking-tight text-[#111111]">
-              Etiquetas com QR Code
+              Etiquetas dos produtos
             </h1>
             <p className="text-sm text-gray-500">
-              O QR Code guarda o código (SKU) do modelo. Na Nova venda, o leitor ou a câmera
-              encontram o produto por ele.
+              Cada etiqueta leva o QR Code ou o código de barras com o código (SKU) do produto. Na
+              Nova venda, o leitor ou a câmera do celular encontram o produto por ele. Produto
+              repetido usa a mesma etiqueta.
             </p>
           </div>
           <Button
@@ -148,6 +227,69 @@ export default function ProductLabels() {
             />
             Mostrar o preço
           </label>
+          <div className="space-y-1 sm:col-span-3">
+            <p className="text-xs font-semibold">Código na etiqueta</p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="codeKind"
+                  checked={kind === 'qr'}
+                  onChange={() => setKind('qr')}
+                />
+                QR Code (câmera do celular)
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="codeKind"
+                  checked={kind === 'barras'}
+                  onChange={() => setKind('barras')}
+                />
+                Código de barras (leitor de mão e câmera)
+              </label>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Leitor de mão comum (como o de supermercado) só lê código de barras. Na térmica 40 ×
+              25 mm, o QR Code lê melhor.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
+          <div className="space-y-1">
+            <Label htmlFor="stockStore" className="text-xs font-semibold">
+              Quantidade pelo estoque
+            </Label>
+            <select
+              id="stockStore"
+              value={stockStore}
+              onChange={(e) => setStockStore(e.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Todas as lojas</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button type="button" variant="outline" onClick={fillFromStock} disabled={loadingStock}>
+            <Boxes className="mr-2 h-4 w-4" />
+            {loadingStock ? 'Lendo o estoque...' : 'Uma etiqueta por unidade em estoque'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setQuantities({})
+              setStockNote('')
+            }}
+          >
+            Zerar quantidades
+          </Button>
+          {stockNote && <p className="w-full text-sm text-gray-600">{stockNote}</p>}
         </div>
 
         <div className="space-y-3 rounded-xl bg-white p-4 shadow-sm">
@@ -185,7 +327,14 @@ export default function ProductLabels() {
           </div>
         </div>
 
-        {labels.length > 0 && <p className="text-sm font-semibold text-gray-700">Prévia</p>}
+        {labels.length > 0 ? (
+          <p className="text-sm font-semibold text-gray-700">Prévia</p>
+        ) : (
+          <p className="text-sm text-gray-500">
+            Digite a quantidade de um produto (ou use o estoque) e a prévia das etiquetas aparece
+            aqui embaixo.
+          </p>
+        )}
       </div>
 
       <div className="mx-auto w-fit space-y-6 pb-10 print:space-y-0 print:p-0">
@@ -198,23 +347,44 @@ export default function ProductLabels() {
               <div
                 key={`${p.id}-${i}`}
                 style={{ width: `${size.width}mm`, height: `${size.height}mm` }}
-                className="flex items-center gap-[2mm] overflow-hidden border border-dashed border-gray-300 bg-white px-[2mm] text-black print:border-0"
+                className={`${
+                  kind === 'barras'
+                    ? 'flex flex-col justify-center text-center'
+                    : 'flex items-center gap-[2mm]'
+                } overflow-hidden border border-dashed border-gray-300 bg-white px-[2mm] text-black print:border-0`}
               >
-                {qr[p.sku] && (
-                  <img
-                    src={qr[p.sku]}
-                    alt={`QR ${p.sku}`}
-                    style={{ width: `${qrSize}mm`, height: `${qrSize}mm` }}
-                    className="shrink-0"
-                  />
+                {kind === 'barras' ? (
+                  <>
+                    <p className="line-clamp-2 text-[7pt] font-bold leading-tight">{p.name}</p>
+                    <div className="my-[1mm]">
+                      <Barcode value={p.sku} heightMm={Math.max(8, size.height * 0.4)} />
+                    </div>
+                    <p className="font-mono text-[7pt] leading-none">{p.sku}</p>
+                    {showPrice && (
+                      <p className="mt-[0.5mm] text-[7pt] font-bold leading-none">
+                        {formatBRL(p.sale_price)}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {qr[p.sku] && (
+                      <img
+                        src={qr[p.sku]}
+                        alt={`QR ${p.sku}`}
+                        style={{ width: `${qrSize}mm`, height: `${qrSize}mm` }}
+                        className="shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0 leading-tight">
+                      <p className="line-clamp-3 text-[8pt] font-bold">{p.name}</p>
+                      <p className="mt-[1mm] font-mono text-[7pt]">{p.sku}</p>
+                      {showPrice && (
+                        <p className="mt-[1mm] text-[8pt] font-bold">{formatBRL(p.sale_price)}</p>
+                      )}
+                    </div>
+                  </>
                 )}
-                <div className="min-w-0 leading-tight">
-                  <p className="line-clamp-3 text-[8pt] font-bold">{p.name}</p>
-                  <p className="mt-[1mm] font-mono text-[7pt]">{p.sku}</p>
-                  {showPrice && (
-                    <p className="mt-[1mm] text-[8pt] font-bold">{formatBRL(p.sale_price)}</p>
-                  )}
-                </div>
               </div>
             ))}
           </div>
