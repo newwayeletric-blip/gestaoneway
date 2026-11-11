@@ -154,6 +154,55 @@ export const MailSettingsService = {
   },
 }
 
+// Conexão com o Bling (pocketbase/hooks/bling.js): só o administrador. O
+// Client Secret e os tokens nunca voltam; do Client ID, só os 6 últimos.
+export interface BlingStatus {
+  configured: boolean
+  clientIdEnd: string
+  connected: boolean
+  companyName: string
+  companyCnpj: string
+  connectedAt: number
+  lastRefreshAt: number
+  tokenExpiresAt: number
+  lastError: string
+}
+
+export const BlingService = {
+  // Endereço para onde o Bling devolve o navegador depois de "Autorizar";
+  // é o "Link de redirecionamento" cadastrado no aplicativo do Bling.
+  callbackUrl(): string {
+    return pb.baseURL.replace(/\/$/, '') + '/backend/v1/bling/callback'
+  },
+
+  async status(): Promise<BlingStatus> {
+    return await pb.send<BlingStatus>('/backend/v1/bling/status', { method: 'GET' })
+  },
+
+  async saveCredentials(payload: {
+    client_id: string
+    client_secret: string
+  }): Promise<BlingStatus> {
+    return await pb.send<BlingStatus>('/backend/v1/bling/credentials', {
+      method: 'POST',
+      body: payload,
+    })
+  },
+
+  async connectUrl(): Promise<string> {
+    const res = await pb.send<{ url: string }>('/backend/v1/bling/connect', { method: 'POST' })
+    return res.url
+  },
+
+  async test(): Promise<BlingStatus> {
+    return await pb.send<BlingStatus>('/backend/v1/bling/test', { method: 'POST' })
+  },
+
+  async disconnect(): Promise<BlingStatus> {
+    return await pb.send<BlingStatus>('/backend/v1/bling/disconnect', { method: 'POST' })
+  },
+}
+
 // Importação de produtos por planilha (pocketbase/hooks/products_import.js).
 export interface ProductImportRow {
   sku: string

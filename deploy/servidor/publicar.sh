@@ -17,6 +17,8 @@ mkdir -p "$stage/pb_hooks" "$stage/pb_migrations"
 for f in "$ROOT"/pocketbase/hooks/*.js; do
   cp "$f" "$stage/pb_hooks/$(basename "${f%.js}").pb.js"
 done
+# Bibliotecas dos hooks (require), sem o sufixo: não são carregadas como hook.
+cp -r "$ROOT/pocketbase/hooks/lib" "$stage/pb_hooks/lib"
 cp "$ROOT"/pocketbase/migrations/*.js "$stage/pb_migrations/"
 S="$ROOT/deploy/servidor"
 cp "$S/Dockerfile" "$S/docker-compose.yml" "$S/Caddyfile" "$S/litestream.yml" "$stage/"

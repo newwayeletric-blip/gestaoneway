@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { StoresService, SettingsService, ProductsService } from '@/services/api'
 import type { StoreRecord, CategoryRecord } from '@/types'
@@ -11,6 +12,7 @@ import {
   Save,
   Plus,
   Mail,
+  Link2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import MailSettings from './MailSettings'
+import BlingSettings from './BlingSettings'
 
 export default function Settings() {
   const { stores, user } = useAuth()
@@ -34,6 +37,27 @@ export default function Settings() {
   const [maxInstallments, setMaxInstallments] = useState('12')
 
   const { toast } = useToast()
+
+  // Volta do Bling depois de "Autorizar": /configuracoes?bling=conectado|erro.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const blingReturn = searchParams.get('bling')
+  const [tab, setTab] = useState(blingReturn ? 'bling' : 'regras')
+  useEffect(() => {
+    if (!blingReturn) return
+    if (blingReturn === 'conectado') {
+      toast({
+        title: 'Bling conectado!',
+        description: 'As notas fiscais já podem sair pelo Bling.',
+      })
+    } else {
+      toast({
+        title: 'O Bling não foi conectado',
+        description: 'Veja o motivo na aba Bling e tente de novo.',
+        variant: 'destructive',
+      })
+    }
+    setSearchParams({}, { replace: true })
+  }, [blingReturn])
 
   const loadData = async () => {
     try {
@@ -118,7 +142,7 @@ export default function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue="regras" className="space-y-4">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList className="bg-white border border-gray-200 flex-wrap h-auto justify-start">
           <TabsTrigger
             value="regras"
@@ -146,6 +170,12 @@ export default function Settings() {
               <Mail className="h-4 w-4 mr-1.5" /> E-mail
             </TabsTrigger>
           )}
+          <TabsTrigger
+            value="bling"
+            className="data-[state=active]:bg-[#0A8F5C] data-[state=active]:text-white"
+          >
+            <Link2 className="h-4 w-4 mr-1.5" /> Bling
+          </TabsTrigger>
         </TabsList>
 
         {/* TAB 1: REGRAS DE DESCONTO E PARCELAMENTO */}
@@ -342,6 +372,11 @@ export default function Settings() {
             <MailSettings />
           </TabsContent>
         )}
+
+        {/* TAB 5: CONEXÃO COM O BLING (NF-e) */}
+        <TabsContent value="bling">
+          <BlingSettings />
+        </TabsContent>
       </Tabs>
     </div>
   )

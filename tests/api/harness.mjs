@@ -87,6 +87,8 @@ function pbFlags(work, migrationsUpTo) {
       cpSync(path.join(ROOT, 'pocketbase', 'hooks', f), path.join(hooksDir, f.replace(/\.js$/, '.pb.js')))
     }
   }
+  // Bibliotecas dos hooks (require), sem o sufixo: não são carregadas como hook.
+  cpSync(path.join(ROOT, 'pocketbase', 'hooks', 'lib'), path.join(hooksDir, 'lib'), { recursive: true })
 
   let migrationsDir = path.join(ROOT, 'pocketbase', 'migrations')
   if (migrationsUpTo) {
