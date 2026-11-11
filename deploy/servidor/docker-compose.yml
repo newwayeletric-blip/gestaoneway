@@ -1,0 +1,20 @@
+# Servidor de dados do sistema de gestão no VPS (/docker/gestaoneway).
+# O PocketBase só escuta em 127.0.0.1:8091; quem fala com a internet é o
+# Caddy (HTTPS), que entra quando o domínio estiver apontado.
+name: gestaoneway
+
+services:
+  pocketbase:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8091:8090'
+    volumes:
+      - ./pb_data:/pb/pb_data
+      - ./pb_hooks:/pb/pb_hooks:ro
+      - ./pb_migrations:/pb/pb_migrations:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'

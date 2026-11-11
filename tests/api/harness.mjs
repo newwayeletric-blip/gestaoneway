@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { inflateRawSync } from 'node:zlib'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const PB_VERSION = process.env.PB_VERSION || '0.36.9'
+const PB_VERSION = process.env.PB_VERSION || '0.40.4'
 export const SETUP_TOKEN = 'teste-token-de-instalacao-0123456789abcdef'
 
 // Extrai um arquivo de um ZIP sem depender de tar/unzip do sistema
