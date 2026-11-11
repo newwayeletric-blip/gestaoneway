@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { StockService } from '@/services/api'
+import { SalesService, StockService } from '@/services/api'
 import useRealtime from '@/hooks/use-realtime'
 import {
   LayoutDashboard,
@@ -23,8 +23,10 @@ import {
   Zap,
   ChevronDown,
   Building2,
+  Clock,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -70,6 +72,25 @@ export default function Layout() {
   // Realtime update when stock items change
   useRealtime('stock_items', () => {
     loadLowStock()
+  })
+
+  // Regra do dono: vendas de vendedor esperam o administrador antes da NF.
+  const [pendingApprovals, setPendingApprovals] = useState<number>(0)
+  const loadPendingApprovals = useCallback(async () => {
+    if (!isAdmin) return
+    try {
+      setPendingApprovals(await SalesService.countAwaitingApproval())
+    } catch {
+      // ignore
+    }
+  }, [isAdmin])
+
+  useEffect(() => {
+    loadPendingApprovals()
+  }, [loadPendingApprovals])
+
+  useRealtime('sales', () => {
+    loadPendingApprovals()
   })
 
   // Admin menu exact items:
@@ -304,41 +325,43 @@ export default function Layout() {
       )}
 
       {/* MAIN CONTAINER */}
-      <div className="flex flex-1 flex-col md:pl-64">
+      {/* min-w-0: sem ele a coluna cresce até a largura da maior tabela e, no
+          celular, a página fica mais larga que a tela (janelas abrem fora dela). */}
+      <div className="flex flex-1 flex-col md:pl-64 min-w-0">
         {/* TOP HEADER */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm">
-          {/* LEFT: MOBILE TOGGLE + TITLE */}
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 sm:px-6 shadow-sm">
+          {/* LEFT: MOBILE TOGGLE + TITLE (o título encurta para caber no celular) */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 shrink-0"
               aria-label="Abrir menu"
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-[#111111] leading-tight">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold text-[#111111] leading-tight truncate">
                 {getPageTitle()}
               </h1>
             </div>
           </div>
 
           {/* RIGHT: STORE SELECTOR + LOW STOCK ALERT + USER MENU */}
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1 sm:gap-4 shrink-0">
             {/* STORE SELECTOR */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex items-center gap-2 border-gray-300 bg-gray-50 hover:bg-gray-100 text-xs sm:text-sm font-medium text-[#111111]"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 border-gray-300 bg-gray-50 hover:bg-gray-100 text-xs sm:text-sm font-medium text-[#111111]"
                 >
                   <StoreIcon className="h-4 w-4 text-[#0A8F5C]" />
                   <span className="hidden sm:inline font-semibold">
                     {organization ? `${organization.name} · ` : ''}
                     {activeStore?.name || 'Selecione a Loja'}
                   </span>
-                  <span className="sm:hidden font-semibold max-w-[110px] truncate">
+                  <span className="sm:hidden font-semibold max-w-[72px] truncate">
                     {activeStore?.name || 'Loja'}
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
@@ -367,6 +390,21 @@ export default function Layout() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* VENDAS AGUARDANDO APROVAÇÃO (ADMIN) */}
+            {isAdmin && pendingApprovals > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/vendas?status=aguardando_aprovacao')}
+                title="Vendas aguardando aprovação"
+                className="px-2.5 py-1.5 h-9 rounded-lg flex items-center gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white"
+              >
+                <Clock className="h-4 w-4" />
+                <span className="text-xs font-semibold">{pendingApprovals}</span>
+                <span className="hidden lg:inline text-xs">para aprovar</span>
+              </Button>
+            )}
 
             {/* LOW STOCK BADGE (ADMIN) */}
             {isAdmin && (
@@ -451,8 +489,10 @@ export default function Layout() {
         </header>
 
         {/* CONTENT AREA */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          <Outlet />
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
 
         {/* FOOTER */}

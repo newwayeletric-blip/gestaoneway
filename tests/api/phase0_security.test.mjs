@@ -481,10 +481,12 @@ describe('Cenário 4 — CPF de cliente existente', () => {
 
 describe('Cenário 5 — PDF de NF sem token', () => {
   test('arquivo protegido não abre sem token e abre com token', async () => {
+    // A NF em si só entra em venda confirmada (sales_flow.test.mjs); a
+    // proteção do arquivo é a mesma para qualquer documento da venda.
     const form = new FormData()
     form.append('sale', ctx.saleA)
-    form.append('label', 'NF teste')
-    form.append('doc_type', 'nota_fiscal')
+    form.append('label', 'Comprovante teste')
+    form.append('doc_type', 'comprovante_pagamento')
     form.append('file', new Blob(['%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'], { type: 'application/pdf' }), 'nf.pdf')
     const doc = await api('POST', '/api/collections/sale_documents/records', { token: ctx.sellerA.token, form })
     ok(doc, 'upload da NF pelo vendedor dono da venda')

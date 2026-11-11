@@ -26,6 +26,7 @@ import type {
   MonthlyClosingRecord,
 } from '@/types'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
+import { saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
 import {
   FileSpreadsheet,
   Download,
@@ -854,17 +855,8 @@ export default function Reports() {
                       {formatBRL(s.total)}
                     </td>
                     <td className="py-2 px-3 text-center">
-                      <Badge
-                        variant={
-                          s.status === 'confirmada'
-                            ? 'default'
-                            : s.status === 'cancelada'
-                              ? 'destructive'
-                              : 'secondary'
-                        }
-                        className="text-[10px]"
-                      >
-                        {s.status}
+                      <Badge className={`text-[10px] ${saleStatusClass(s.status)}`}>
+                        {saleStatusLabel(s.status)}
                       </Badge>
                     </td>
                     <td className="py-2 px-3 text-right text-muted-foreground">

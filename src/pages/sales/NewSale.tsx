@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   CheckCircle2,
-  DollarSign,
+  Clock,
   Plus,
   Trash2,
   Search,
+  Send,
   UserPlus,
   AlertTriangle,
-  Receipt,
   CreditCard,
   Banknote,
   QrCode,
@@ -23,7 +23,6 @@ import {
   SalesService,
   StoresService,
   SettingsService,
-  FinancialService,
 } from '@/services/api'
 import type {
   ProductRecord,
@@ -32,7 +31,7 @@ import type {
   StockItemRecord,
   StoreRecord,
   PaymentMethod,
-  FinancialAccountRecord,
+  SaleStatus,
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -80,22 +79,25 @@ interface PaymentEntry {
   change_amount?: number
   installments: number
   installment_value: number
-  financial_account?: string
-  card_tax_rate?: number
-  card_tax_amount?: number
-  net_amount?: number
+}
+
+const METHOD_LABELS: Record<PaymentMethod, string> = {
+  pix: 'Pix',
+  dinheiro: 'Dinheiro',
+  cartao_debito: 'Cartão de débito',
+  cartao_credito: 'Cartão de crédito',
 }
 
 export function NewSale() {
   const navigate = useNavigate()
   const { user, isAdmin, organization } = useAuth()
+  const salesPath = isAdmin ? '/vendas' : '/minhas-vendas'
 
   // Data states
   const [stores, setStores] = useState<StoreRecord[]>([])
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [stockItems, setStockItems] = useState<StockItemRecord[]>([])
-  const [accounts, setAccounts] = useState<FinancialAccountRecord[]>([])
 
   // Selection states
   const [cart, setCart] = useState<CartItem[]>([])
@@ -114,11 +116,12 @@ export function NewSale() {
   const [newPayAmount, setNewPayAmount] = useState<number>(0)
   const [newPayCashGiven, setNewPayCashGiven] = useState<number>(0)
   const [newPayInstallments, setNewPayInstallments] = useState<number>(1)
-  const [newPayAccount, setNewPayAccount] = useState<string>('')
 
-  // Settings for limits
-  const [maxDiscountPercent, setMaxDiscountPercent] = useState<number>(10)
+  // Limites da organização (Configurações): desconto por forma de pagamento e
+  // parcelas. Sem limite configurado, qualquer desconto passa pelo administrador.
+  const [discountLimits, setDiscountLimits] = useState<Partial<Record<PaymentMethod, number>>>({})
   const [maxInstallmentsLimit, setMaxInstallmentsLimit] = useState<number>(12)
+  const [discountReason, setDiscountReason] = useState('')
 
   // Modals
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
@@ -131,9 +134,15 @@ export function NewSale() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authReason, setAuthReason] = useState('')
 
-  // Confirmation state
+  // Envio: a chave de idempotência evita venda duplicada no duplo clique ou
+  // no reenvio depois de uma queda de conexão; muda a cada venda nova.
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [completedSale, setCompletedSale] = useState<{ id: string; number: string } | null>(null)
+  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID())
+  const [completedSale, setCompletedSale] = useState<{
+    id: string
+    number: string
+    status: SaleStatus
+  } | null>(null)
 
   // Load Initial Data
   useEffect(() => {
@@ -143,25 +152,28 @@ export function NewSale() {
           StoresService.list(),
           ProductsService.list("status = 'ativo'"),
         ])
-        setStores(storesList)
+        // O vendedor vende só nas lojas do cadastro dele (o servidor também
+        // confere); mesma regra das lojas autorizadas do topo.
+        const allowed =
+          isAdmin || !user?.stores?.length
+            ? storesList
+            : storesList.filter((s) => user?.stores?.includes(s.id))
+        setStores(allowed)
         setProducts(prodsList)
 
-        if (storesList.length > 0) {
-          const userStore =
-            user?.stores && user.stores.length > 0 ? user.stores[0] : storesList[0].id
-          setSelectedStoreId(userStore)
+        if (allowed.length > 0) {
+          setSelectedStoreId((allowed.find((s) => user?.stores?.includes(s.id)) || allowed[0]).id)
         }
 
-        // Load settings
-        const maxDisc = await SettingsService.get('max_discount_seller', '10')
-        setMaxDiscountPercent(parseFloat(maxDisc) || 10)
-        const maxInst = await SettingsService.get('max_installments', '12')
-        setMaxInstallmentsLimit(parseInt(maxInst, 10) || 12)
-
-        if (isAdmin) {
-          const accs = await FinancialService.listAccounts()
-          setAccounts(accs.filter((a) => a.active))
+        // Mesmas chaves que a tela de Configurações grava e o servidor confere.
+        const settings = await SettingsService.getAll()
+        const limits: Partial<Record<PaymentMethod, number>> = {}
+        for (const method of Object.keys(METHOD_LABELS) as PaymentMethod[]) {
+          const value = parseFloat(settings[`max_discount_${method}`])
+          if (!isNaN(value) && value >= 0) limits[method] = value
         }
+        setDiscountLimits(limits)
+        setMaxInstallmentsLimit(parseInt(settings.max_installments_cartao_credito, 10) || 12)
       } catch (err: any) {
         toast({
           title: 'Erro ao carregar dados da venda',
@@ -225,6 +237,20 @@ export function NewSale() {
   const isExactPayment = useMemo(() => {
     return Math.round(totalPaid * 100) === Math.round(total * 100) && total > 0
   }, [totalPaid, total])
+
+  // O limite de desconto vem da forma de pagamento principal (a de maior
+  // valor), como o servidor confere. Acima dele, o administrador decide.
+  const mainMethod = useMemo<PaymentMethod>(() => {
+    let main: PaymentEntry | null = null
+    for (const p of payments) if (!main || p.amount > main.amount) main = p
+    return main ? main.method : 'pix'
+  }, [payments])
+  const discountLimit = discountLimits[mainMethod]
+  const discountPercent = subtotal > 0 ? (totalDiscount / subtotal) * 100 : 0
+  const isDiscountOverLimit =
+    totalDiscount > 0 &&
+    (discountLimit === undefined ||
+      Math.round(totalDiscount * 100) > Math.round(subtotal * discountLimit))
 
   // Add product to cart
   const handleAddToCart = (product: ProductRecord, variant?: ProductVariantRecord) => {
@@ -301,21 +327,14 @@ export function NewSale() {
     )
   }
 
+  // O desconto não é travado aqui: acima do limite, a venda vai para o
+  // administrador com o motivo escrito pelo vendedor.
   const handleUpdateDiscount = (id: string, val: number) => {
     const item = cart.find((i) => i.id === id)
     if (!item) return
-
-    const maxAllowedDiscount = (item.sale_price * item.quantity * maxDiscountPercent) / 100
-    if (!isAdmin && val > maxAllowedDiscount) {
-      toast({
-        title: 'Desconto acima do limite permitido',
-        description: `Seu perfil de vendedor permite no máximo ${maxDiscountPercent}% de desconto (R$ ${maxAllowedDiscount.toFixed(2)}).`,
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, discount: Math.max(0, val) } : i)))
+    const gross = item.sale_price * item.quantity
+    const discount = Math.min(Math.max(0, val), gross)
+    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, discount } : i)))
   }
 
   const handleRemoveCartItem = (id: string) => {
@@ -328,10 +347,6 @@ export function NewSale() {
     setNewPayAmount(remainingBalance > 0 ? remainingBalance : 0)
     setNewPayCashGiven(remainingBalance > 0 ? remainingBalance : 0)
     setNewPayInstallments(1)
-    if (accounts.length > 0) {
-      const matchStoreAcc = accounts.find((a) => a.store === selectedStoreId)
-      setNewPayAccount(matchStoreAcc ? matchStoreAcc.id : accounts[0].id)
-    }
     setIsPaymentModalOpen(true)
   }
 
@@ -342,12 +357,18 @@ export function NewSale() {
       return
     }
 
+    if (Math.round((totalPaid + newPayAmount) * 100) > Math.round(total * 100)) {
+      toast({
+        title: 'Valor acima do total da venda',
+        description: `Falta receber ${formatBRL(remainingBalance)}. O troco do dinheiro é calculado à parte.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
     let receivedAmount: number | undefined = undefined
     let changeAmount: number | undefined = undefined
     let installmentValue = newPayAmount
-    let cardTaxRate = 0
-    let cardTaxAmount = 0
-    let netAmount = newPayAmount
 
     if (newPayMethod === 'dinheiro') {
       if (newPayCashGiven < newPayAmount) {
@@ -373,28 +394,17 @@ export function NewSale() {
         return
       }
       installmentValue = Number((newPayAmount / newPayInstallments).toFixed(2))
-      // Standard estimated fee rates for card receivables
-      cardTaxRate = newPayInstallments === 1 ? 3.0 : 3.0 + (newPayInstallments - 1) * 0.8
-      cardTaxAmount = Number(((newPayAmount * cardTaxRate) / 100).toFixed(2))
-      netAmount = Number((newPayAmount - cardTaxAmount).toFixed(2))
-    } else if (newPayMethod === 'cartao_debito') {
-      cardTaxRate = 1.8
-      cardTaxAmount = Number(((newPayAmount * cardTaxRate) / 100).toFixed(2))
-      netAmount = Number((newPayAmount - cardTaxAmount).toFixed(2))
     }
 
+    // A taxa da maquininha só entra com a tabela cadastrada (Fase 2).
     const newEntry: PaymentEntry = {
       id: Math.random().toString(36).substring(2, 9),
       method: newPayMethod,
       amount: newPayAmount,
       received_amount: receivedAmount,
       change_amount: changeAmount,
-      installments: newPayInstallments,
+      installments: newPayMethod === 'cartao_credito' ? newPayInstallments : 1,
       installment_value: installmentValue,
-      financial_account: newPayAccount || undefined,
-      card_tax_rate: cardTaxRate,
-      card_tax_amount: cardTaxAmount,
-      net_amount: netAmount,
     }
 
     setPayments((prev) => [...prev, newEntry])
@@ -435,7 +445,9 @@ export function NewSale() {
     }
   }
 
-  // Handle final sale confirmation
+  // Regra do dono: a venda do vendedor espera o administrador antes da NF.
+  // O servidor reserva o estoque e numera a venda; a venda lançada pelo
+  // administrador é aprovada em seguida.
   const handleFinalizeSale = async (allowPendingBalance = false) => {
     if (!selectedStoreId) {
       toast({ title: 'Selecione a loja da venda', variant: 'destructive' })
@@ -449,85 +461,69 @@ export function NewSale() {
       toast({ title: 'Adicione ao menos um produto no carrinho', variant: 'destructive' })
       return
     }
-
-    // Check payment coverage
-    if (!isExactPayment && !allowPendingBalance) {
-      if (!isAdmin) {
-        toast({
-          title: 'Saldo pendente não autorizado',
-          description: `Venda com saldo restante de ${formatBRL(remainingBalance)} exige autorização administrativa.`,
-          variant: 'destructive',
-        })
-        return
-      } else {
-        // Admin can authorize or open authorization modal
-        setIsAuthModalOpen(true)
-        return
-      }
+    if (isDiscountOverLimit && !isAdmin && discountReason.trim().length < 5) {
+      toast({
+        title: 'Explique o desconto',
+        description: 'Escreva o motivo do desconto acima do limite para o administrador.',
+        variant: 'destructive',
+      })
+      return
+    }
+    // O administrador justifica o saldo pendente antes de confirmar (VEN-06).
+    if (isAdmin && !isExactPayment && !allowPendingBalance) {
+      setIsAuthModalOpen(true)
+      return
     }
 
-    // Submit sale to server
     setIsSubmitting(true)
     try {
-      // 1. Create draft sale with items and payments
-      const draft = await SalesService.createDraftSale(
-        {
-          customer: selectedCustomer.id,
-          store: selectedStoreId,
-          seller: user?.id,
-          subtotal,
-          total_discount: totalDiscount,
-          total,
-          observation: notes,
-          authorized_by: allowPendingBalance ? user?.id : undefined,
-          authorization_note: allowPendingBalance
-            ? authReason || 'Saldo pendente autorizado pelo administrador'
-            : undefined,
-          payment: payments[0]?.method || 'pix',
-          installments: payments[0]?.installments || 1,
-        },
-        cart.map((i) => ({
+      const res = await SalesService.submitSale({
+        idempotency_key: submissionKey,
+        store: selectedStoreId,
+        customer: selectedCustomer.id,
+        observation: notes,
+        discount_reason: isDiscountOverLimit ? discountReason.trim() : '',
+        items: cart.map((i) => ({
           product: i.product.id,
           variant: i.variant?.id,
-          product_name: i.variant ? `${i.product.name} - ${i.variant.name}` : i.product.name,
-          sku: i.variant ? i.variant.sku : i.product.sku,
-          sale_price: i.sale_price,
-          cost_price: i.cost_price,
           quantity: i.quantity,
           discount: i.discount,
-          total: i.sale_price * i.quantity - i.discount,
           serial_number: i.serial_number,
         })),
-        payments.map((p) => ({
+        payments: payments.map((p) => ({
           method: p.method,
           amount: p.amount,
-          received_amount: p.received_amount,
-          change_amount: p.change_amount,
           installments: p.installments,
-          installment_value: p.installment_value,
-          financial_account: p.financial_account,
-          card_tax_rate: p.card_tax_rate,
-          card_tax_amount: p.card_tax_amount,
-          net_amount: p.net_amount,
+          received_amount: p.received_amount,
         })),
-      )
-
-      // 2. Call atomic confirmation endpoint on backend
-      // Runs in PocketBase transaction: checks monthly closing, validates stock, decrements stock once,
-      // writes stock movements, calculates commission item-by-item and creates audit log
-      const confRes = await SalesService.confirmSale(draft.id)
-
-      toast({
-        title: 'Venda confirmada com sucesso!',
-        description: `Venda ${confRes.number} registrada com baixa de estoque consistente.`,
       })
 
-      setCompletedSale({ id: draft.id, number: confRes.number })
+      let status = res.status
+      if (isAdmin && status === 'aguardando_aprovacao') {
+        try {
+          status = (
+            await SalesService.approveSale(res.id, allowPendingBalance ? authReason.trim() : '')
+          ).status
+        } catch (err: any) {
+          toast({
+            title: `Venda ${res.number} enviada, mas não foi confirmada`,
+            description: `${err.message} Abra a venda para aprovar.`,
+            variant: 'destructive',
+          })
+        }
+      }
+
+      toast(
+        status === 'confirmada'
+          ? { title: `Venda ${res.number} confirmada` }
+          : { title: `Venda ${res.number} enviada para aprovação` },
+      )
+      setCompletedSale({ id: res.id, number: res.number, status })
       setIsAuthModalOpen(false)
     } catch (err: any) {
       toast({
-        title: 'Erro ao confirmar venda',
-        description: err.message || 'Falha ao processar confirmação.',
+        title: 'A venda não foi registrada',
+        description: err.message || 'Tente de novo.',
         variant: 'destructive',
       })
     } finally {
@@ -535,24 +531,62 @@ export function NewSale() {
     }
   }
 
-  // After sale completed modal / receipt
+  const startNewSale = () => {
+    setCompletedSale(null)
+    setCart([])
+    setPayments([])
+    setSelectedCustomer(null)
+    setNotes('')
+    setDiscountReason('')
+    setAuthReason('')
+    setSubmissionKey(crypto.randomUUID())
+    if (selectedStoreId) {
+      StockService.listByStore(selectedStoreId)
+        .then(setStockItems)
+        .catch(() => {})
+    }
+  }
+
+  // Venda enviada: aguardando o administrador (vendedor) ou já confirmada.
+  if (completedSale && completedSale.status !== 'confirmada') {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto">
+        <Card className="border-amber-300 bg-amber-50/40">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-2">
+              <Clock className="h-7 w-7" />
+            </div>
+            <CardTitle className="text-2xl text-amber-800">
+              Venda {completedSale.number} enviada para aprovação
+            </CardTitle>
+            <CardDescription className="text-amber-900">
+              O produto já está reservado nesta loja. Avise o administrador.{' '}
+              <strong>Não emita a nota fiscal antes da aprovação.</strong>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row justify-center gap-2 pt-2">
+            <Button variant="outline" onClick={() => navigate(`/vendas/${completedSale.id}`)}>
+              Ver a venda
+            </Button>
+            <Button onClick={startNewSale}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova venda
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (completedSale) {
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => navigate('/sales')}>
+          <Button variant="outline" onClick={() => navigate(salesPath)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar para Lista de Vendas
           </Button>
-          <Button
-            onClick={() => {
-              setCompletedSale(null)
-              setCart([])
-              setPayments([])
-              setSelectedCustomer(null)
-              setNotes('')
-            }}
-          >
+          <Button onClick={startNewSale}>
             <Plus className="mr-2 h-4 w-4" />
             Nova Venda
           </Button>
@@ -564,10 +598,11 @@ export function NewSale() {
               <CheckCircle2 className="h-8 w-8" />
             </div>
             <CardTitle className="text-2xl text-emerald-700 dark:text-emerald-400">
-              Venda {completedSale.number} Concluída!
+              Venda {completedSale.number} confirmada
             </CardTitle>
             <CardDescription>
-              Estoque baixado com sucesso, comissões geradas e pagamentos registrados na tesouraria.
+              Estoque baixado e comissão calculada. A nota fiscal já pode ser emitida e anexada na
+              venda.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -583,7 +618,7 @@ export function NewSale() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(salesPath)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -912,8 +947,8 @@ export function NewSale() {
                           <CreditCard className="h-4 w-4 text-indigo-600" />
                         )}
                         <div>
-                          <p className="font-medium capitalize">
-                            {p.method.replace('_', ' ')}
+                          <p className="font-medium">
+                            {METHOD_LABELS[p.method]}
                             {p.method === 'cartao_credito' &&
                               ` (${p.installments}x de ${formatBRL(p.installment_value)})`}
                           </p>
@@ -921,12 +956,6 @@ export function NewSale() {
                             <p className="text-[11px] text-muted-foreground">
                               Entregue: {formatBRL(p.received_amount || 0)} • Troco:{' '}
                               {formatBRL(p.change_amount)}
-                            </p>
-                          ) : null}
-                          {p.net_amount && p.net_amount !== p.amount ? (
-                            <p className="text-[10px] text-muted-foreground">
-                              Taxa operadora: {p.card_tax_rate}% (líquido: {formatBRL(p.net_amount)}
-                              )
                             </p>
                           ) : null}
                         </div>
@@ -966,6 +995,40 @@ export function NewSale() {
                 </div>
               </div>
 
+              {!isAdmin && remainingBalance > 0 && payments.length > 0 && (
+                <p className="text-[11px] text-amber-700">
+                  Saldo pendente de {formatBRL(remainingBalance)}: o administrador decide ao aprovar
+                  a venda.
+                </p>
+              )}
+
+              {/* Desconto acima do limite: o administrador decide. */}
+              {isDiscountOverLimit && (
+                <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="flex gap-1.5 text-xs font-medium text-amber-900">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>
+                      Desconto de {discountPercent.toFixed(1).replace('.', ',')}%{' '}
+                      {discountLimit === undefined
+                        ? `sem limite configurado para ${METHOD_LABELS[mainMethod]}.`
+                        : `acima do limite de ${discountLimit}% para ${METHOD_LABELS[mainMethod]}.`}{' '}
+                      {isAdmin
+                        ? 'Como administrador, você confirma direto.'
+                        : 'O administrador vai analisar antes de aprovar.'}
+                    </span>
+                  </p>
+                  {!isAdmin && (
+                    <Textarea
+                      value={discountReason}
+                      onChange={(e) => setDiscountReason(e.target.value)}
+                      placeholder="Motivo do desconto (o administrador vai ler)"
+                      rows={2}
+                      className="text-xs bg-white"
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Observation field */}
               <div>
                 <Label className="text-xs text-muted-foreground">Observações da Venda</Label>
@@ -987,24 +1050,28 @@ export function NewSale() {
                   onClick={() => handleFinalizeSale(false)}
                 >
                   {isSubmitting ? (
-                    'Processando Confirmação...'
+                    'Enviando...'
+                  ) : !isAdmin ? (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Enviar para aprovação
+                    </>
                   ) : isExactPayment ? (
                     <>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Confirmar Venda e Baixar Estoque
+                      Confirmar venda
                     </>
                   ) : (
                     <>
                       <ShieldAlert className="mr-2 h-4 w-4" />
-                      {isAdmin
-                        ? 'Confirmar com Saldo Pendente (Admin)'
-                        : 'Exige Autorização de Saldo'}
+                      Confirmar com saldo pendente
                     </>
                   )}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center mt-1.5">
-                  Baixa de estoque e cálculo de comissão acontecem na confirmação com controle de
-                  concorrência.
+                  {isAdmin
+                    ? 'Na confirmação o estoque baixa e a comissão é calculada.'
+                    : 'O produto fica reservado e a venda espera o administrador. A nota fiscal só depois da aprovação.'}
                 </p>
               </div>
             </CardContent>
@@ -1101,28 +1168,6 @@ export function NewSale() {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Gera recebíveis da operadora no financeiro sem duplicar receita.
-                </p>
-              </div>
-            )}
-
-            {/* Financial account destination for admin */}
-            {isAdmin && accounts.length > 0 && (
-              <div>
-                <Label>Conta Financeira de Destino</Label>
-                <Select value={newPayAccount} onValueChange={setNewPayAccount}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione caixa ou conta..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.type.replace('_', ' ')})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             )}
           </div>
@@ -1232,7 +1277,7 @@ export function NewSale() {
             </Button>
             <Button
               className="bg-amber-600 hover:bg-amber-700"
-              disabled={!authReason.trim() || isSubmitting}
+              disabled={authReason.trim().length < 5 || isSubmitting}
               onClick={() => handleFinalizeSale(true)}
             >
               Autorizar e Confirmar Venda

@@ -17,7 +17,7 @@ export default function MyCommissions() {
     if (!user) return
     setIsLoading(true)
     try {
-      const list = await CommissionsService.getAll(user.id)
+      const list = await CommissionsService.getAll(`seller = "${user.id}"`)
       setCommissions(list)
     } catch (err) {
       console.error('Error loading my commissions:', err)
@@ -32,8 +32,9 @@ export default function MyCommissions() {
 
   useRealtime('commissions', () => loadData())
 
+  // A receber: prevista (venda com saldo), liberada (venda paga) e as antigas "pendente".
   const totalPendente = commissions
-    .filter((c) => c.status === 'pendente')
+    .filter((c) => c.status === 'prevista' || c.status === 'liberada' || c.status === 'pendente')
     .reduce((acc, c) => acc + c.value, 0)
   const totalPaga = commissions
     .filter((c) => c.status === 'paga')
@@ -120,9 +121,7 @@ export default function MyCommissions() {
                   <td className="py-3 px-3 font-mono font-medium text-gray-800">
                     {c.expand?.sale?.number || 'Venda'}
                   </td>
-                  <td className="py-3 px-3 text-gray-600">
-                    {c.expand?.store?.name || '—'}
-                  </td>
+                  <td className="py-3 px-3 text-gray-600">{c.expand?.store?.name || '—'}</td>
                   <td className="py-3 px-3 text-gray-600">{formatBRL(c.base_amount)}</td>
                   <td className="py-3 px-3 font-mono">{c.rate}%</td>
                   <td className="py-3 px-3 font-bold text-[#0A8F5C]">{formatBRL(c.value)}</td>
@@ -131,10 +130,20 @@ export default function MyCommissions() {
                       className={
                         c.status === 'paga'
                           ? 'bg-emerald-100 text-[#0A8F5C]'
-                          : 'bg-amber-100 text-amber-800'
+                          : c.status === 'estornada'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-amber-100 text-amber-800'
                       }
                     >
-                      {c.status === 'paga' ? 'Paga' : 'Pendente'}
+                      {c.status === 'paga'
+                        ? 'Paga'
+                        : c.status === 'estornada'
+                          ? 'Estornada'
+                          : c.status === 'liberada'
+                            ? 'Liberada'
+                            : c.status === 'prevista'
+                              ? 'Prevista'
+                              : 'Pendente'}
                     </Badge>
                   </td>
                   <td className="py-3 px-3 text-gray-400">{formatDateBR(c.created)}</td>

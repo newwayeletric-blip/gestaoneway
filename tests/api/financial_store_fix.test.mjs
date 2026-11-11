@@ -91,9 +91,10 @@ before(async () => {
     'fechar setembro',
   )
 
-  // Aplica a 0011 sobre esses dados.
+  // Aplica só a 0011 sobre esses dados, para o "migrate down 1" do último
+  // teste desfazer exatamente ela.
   await pb.stop({ keepData: true })
-  pb = await startPocketBase({ dir: pb.dir })
+  pb = await startPocketBase({ dir: pb.dir, migrationsUpTo: '0011' })
   api = client(pb.baseUrl)
 })
 
@@ -140,7 +141,7 @@ describe('0011: loja dos lançamentos antigos do Financeiro', () => {
     )
 
     await pb.stop({ keepData: true })
-    await runPocketBase(pb.dir, ['migrate', 'down', '1'])
+    await runPocketBase(pb.dir, ['migrate', 'down', '1'], { migrationsUpTo: '0011' })
     pb = await startPocketBase({ dir: pb.dir, migrationsUpTo: '0010' })
     api = client(pb.baseUrl)
 

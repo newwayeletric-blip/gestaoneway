@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { SalesService } from '@/services/api'
 import type { SaleRecord } from '@/types'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
+import { SALE_STATUS, saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
 import useRealtime from '@/hooks/use-realtime'
-import { ShoppingCart, PlusCircle, Search, Filter, Eye, RotateCcw } from 'lucide-react'
+import { PlusCircle, Search, Eye, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -17,20 +18,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useToast } from '@/hooks/use-toast'
 
 interface SalesListProps {
   mySalesOnly?: boolean
 }
 
+const PAYMENT_LABELS: Record<string, string> = {
+  pix: 'Pix',
+  dinheiro: 'Dinheiro',
+  cartao_debito: 'Débito',
+  cartao_credito: 'Crédito',
+}
+
 export default function SalesList({ mySalesOnly = false }: SalesListProps) {
-  const { user, isAdmin, stores, activeStoreId } = useAuth()
+  const { user, isAdmin, stores } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sales, setSales] = useState<SaleRecord[]>([])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [storeFilter, setStoreFilter] = useState('')
+  // "?status=aguardando_aprovacao" vem do aviso de vendas para aprovar no topo.
+  const statusFilter = searchParams.get('status') || 'todas'
+  const [storeFilter, setStoreFilter] = useState('todas')
   const [isLoading, setIsLoading] = useState(true)
-  const { toast } = useToast()
+
+  const setStatusFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'todas') next.delete('status')
+    else next.set('status', value)
+    setSearchParams(next, { replace: true })
+  }
 
   const loadSales = async () => {
     setIsLoading(true)
@@ -39,10 +54,10 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
       if (mySalesOnly && user) {
         filters.push(`seller = "${user.id}"`)
       }
-      if (statusFilter) {
+      if (statusFilter !== 'todas') {
         filters.push(`status = "${statusFilter}"`)
       }
-      if (storeFilter) {
+      if (storeFilter !== 'todas') {
         filters.push(`store = "${storeFilter}"`)
       }
 
@@ -60,48 +75,6 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
   }, [mySalesOnly, statusFilter, storeFilter, user])
 
   useRealtime('sales', () => loadSales())
-
-  const handleCancelSale = async (saleId: string) => {
-    if (!isAdmin) {
-      toast({
-        title: 'Acesso negado',
-        description: 'Apenas a administração pode cancelar vendas.',
-        variant: 'destructive',
-      })
-      return
-    }
-    const reason = prompt('Motivo do cancelamento:')
-    if (!reason) return
-
-    try {
-      await SalesService.cancelOrReturnSale(saleId, 'cancelada', reason)
-      toast({ title: 'Venda cancelada com sucesso.' })
-      loadSales()
-    } catch (err: any) {
-      toast({ title: 'Erro ao cancelar venda', description: err.message, variant: 'destructive' })
-    }
-  }
-
-  const handleReturnSale = async (saleId: string) => {
-    if (!isAdmin) {
-      toast({
-        title: 'Acesso negado',
-        description: 'Apenas a administração pode processar devoluções.',
-        variant: 'destructive',
-      })
-      return
-    }
-    const reason = prompt('Motivo da devolução (os itens retornarão ao estoque da loja):')
-    if (!reason) return
-
-    try {
-      await SalesService.cancelOrReturnSale(saleId, 'devolvida', reason)
-      toast({ title: 'Devolução concluída e estoque estornado à loja!' })
-      loadSales()
-    } catch (err: any) {
-      toast({ title: 'Erro ao devolver venda', description: err.message, variant: 'destructive' })
-    }
-  }
 
   const filtered = sales.filter((s) => {
     if (!search.trim()) return true
@@ -154,11 +127,12 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                 <SelectValue placeholder="Situação: Todas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas as situações</SelectItem>
-                <SelectItem value="confirmada">Confirmada</SelectItem>
-                <SelectItem value="rascunho">Rascunho</SelectItem>
-                <SelectItem value="cancelada">Cancelada</SelectItem>
-                <SelectItem value="devolvida">Devolvida</SelectItem>
+                <SelectItem value="todas">Todas as situações</SelectItem>
+                {Object.entries(SALE_STATUS).map(([value, s]) => (
+                  <SelectItem key={value} value={value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -170,7 +144,7 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                   <SelectValue placeholder="Loja: Todas" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas as Unidades</SelectItem>
+                  <SelectItem value="todas">Todas as Unidades</SelectItem>
                   {stores.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
@@ -195,7 +169,7 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                 <th className="py-2.5 px-3 font-semibold">Vendedor</th>
                 <th className="py-2.5 px-3 font-semibold">Pagamento</th>
                 <th className="py-2.5 px-3 font-semibold">Valor Total</th>
-                <th className="py-2.5 px-3 font-semibold">Status</th>
+                <th className="py-2.5 px-3 font-semibold">Situação</th>
                 <th className="py-2.5 px-3 font-semibold">Data</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Ações</th>
               </tr>
@@ -207,64 +181,40 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
                   <td className="py-3 px-3 font-medium text-gray-800">
                     {s.expand?.customer?.name || 'Cliente'}
                   </td>
-                  <td className="py-3 px-3 text-gray-500">
-                    {s.expand?.store?.name || '—'}
-                  </td>
+                  <td className="py-3 px-3 text-gray-500">{s.expand?.store?.name || '—'}</td>
                   <td className="py-3 px-3 text-gray-600">{s.expand?.seller?.name || '-'}</td>
-                  <td className="py-3 px-3 uppercase text-gray-600 font-mono">
+                  <td className="py-3 px-3 text-gray-600">
                     {s.payment === 'cartao_credito'
-                      ? `Cartão (${s.installments || 1}x)`
-                      : s.payment || '-'}
+                      ? `Crédito (${s.installments || 1}x)`
+                      : PAYMENT_LABELS[s.payment || ''] || '-'}
                   </td>
                   <td className="py-3 px-3 font-bold text-[#0A8F5C]">{formatBRL(s.total)}</td>
                   <td className="py-3 px-3">
-                    <Badge
-                      className={
-                        s.status === 'confirmada'
-                          ? 'bg-emerald-100 text-[#0A8F5C]'
-                          : s.status === 'rascunho'
-                            ? 'bg-gray-100 text-gray-800'
-                            : s.status === 'devolvida'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-red-100 text-red-800'
-                      }
-                    >
-                      {s.status.toUpperCase()}
-                    </Badge>
+                    <Badge className={saleStatusClass(s.status)}>{saleStatusLabel(s.status)}</Badge>
                   </td>
                   <td className="py-3 px-3 text-gray-400">{formatDateBR(s.created)}</td>
-                  <td className="py-3 px-3 text-right space-x-1">
-                    <Button asChild variant="outline" size="sm" className="h-7 text-xs">
-                      <Link to={`/vendas/${s.id}`}>
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Detalhes
-                      </Link>
-                    </Button>
-
-                    {isAdmin && s.status === 'confirmada' && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleReturnSale(s.id)}
-                          className="h-7 text-xs text-amber-700 hover:bg-amber-50"
-                          title="Devolver venda e estornar estoque"
-                        >
-                          <RotateCcw className="h-3 w-3 mr-1" /> Devolver
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCancelSale(s.id)}
-                          className="h-7 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          Cancelar
-                        </Button>
-                      </>
+                  <td className="py-3 px-3 text-right">
+                    {isAdmin && s.status === 'aguardando_aprovacao' ? (
+                      <Button
+                        asChild
+                        size="sm"
+                        className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+                      >
+                        <Link to={`/vendas/${s.id}`}>
+                          <Clock className="h-3.5 w-3.5 mr-1" /> Analisar
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button asChild variant="outline" size="sm" className="h-7 text-xs">
+                        <Link to={`/vendas/${s.id}`}>
+                          <Eye className="h-3.5 w-3.5 mr-1" /> Detalhes
+                        </Link>
+                      </Button>
                     )}
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {!isLoading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-gray-400">
                     Nenhuma venda encontrada com os filtros informados.

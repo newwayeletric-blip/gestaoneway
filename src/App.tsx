@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { ProtectedRoute, PublicOnlyRoute } from '@/components/ProtectedRoute'
 import Layout from '@/components/Layout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Public auth screens
 import Setup from '@/pages/auth/Setup'
@@ -54,71 +55,73 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Routes>
-              {/* PUBLIC ROUTES */}
-              <Route path="/setup" element={<Setup />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
+    <ErrorBoundary fullScreen>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <Toaster />
+            <BrowserRouter>
+              <Routes>
+                {/* PUBLIC ROUTES */}
+                <Route path="/setup" element={<Setup />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
 
-              <Route element={<PublicOnlyRoute />}>
-                <Route path="/login" element={<Login />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-              </Route>
-
-              {/* AUTHENTICATED ROUTES */}
-              <Route element={<ProtectedRoute />}>
-                <Route element={<Layout />}>
-                  {/* ROOT */}
-                  <Route path="/" element={<RootRedirect />} />
-
-                  {/* ADMIN ONLY ROUTES */}
-                  <Route element={<ProtectedRoute requiredProfile="admin" />}>
-                    <Route path="/dashboard" element={<AdminDashboard />} />
-                    <Route path="/financeiro" element={<Financial />} />
-                    <Route path="/comissoes" element={<Commissions />} />
-                    <Route path="/relatorios" element={<Reports />} />
-                    <Route path="/auditoria" element={<AuditLogs />} />
-                    <Route path="/usuarios" element={<UsersList />} />
-                    <Route path="/configuracoes" element={<Settings />} />
-                    <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />
-                    <Route path="/estoque/transferencias" element={<Stock />} />
-                  </Route>
-
-                  {/* SELLER ONLY ROUTES */}
-                  <Route element={<ProtectedRoute requiredProfile="vendedor" />}>
-                    <Route path="/meu-painel" element={<SellerDashboard />} />
-                    <Route path="/minhas-vendas" element={<SalesList mySalesOnly={true} />} />
-                    <Route path="/minhas-comissoes" element={<MyCommissions />} />
-                  </Route>
-
-                  {/* NETWORK ADMIN ROUTES */}
-                  <Route element={<ProtectedRoute requiredNetworkRole="admin_rede" />}>
-                    <Route path="/franquias" element={<Franchises />} />
-                  </Route>
-
-                  {/* COMMON ACCESSIBLE ROUTES (with internal role checks) */}
-                  <Route path="/vendas/nova" element={<NewSale />} />
-                  <Route path="/vendas/:id" element={<SaleDetail />} />
-                  <Route path="/produtos" element={<Products />} />
-                  <Route path="/produtos/:id" element={<Products />} />
-                  <Route path="/estoque" element={<Stock />} />
-                  <Route path="/clientes" element={<CustomersList />} />
-                  <Route path="/clientes/:id" element={<CustomerDetail />} />
+                <Route element={<PublicOnlyRoute />}>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
                 </Route>
-              </Route>
 
-              {/* 403 & 404 */}
-              <Route path="/403" element={<Forbidden />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+                {/* AUTHENTICATED ROUTES */}
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<Layout />}>
+                    {/* ROOT */}
+                    <Route path="/" element={<RootRedirect />} />
+
+                    {/* ADMIN ONLY ROUTES */}
+                    <Route element={<ProtectedRoute requiredProfile="admin" />}>
+                      <Route path="/dashboard" element={<AdminDashboard />} />
+                      <Route path="/financeiro" element={<Financial />} />
+                      <Route path="/comissoes" element={<Commissions />} />
+                      <Route path="/relatorios" element={<Reports />} />
+                      <Route path="/auditoria" element={<AuditLogs />} />
+                      <Route path="/usuarios" element={<UsersList />} />
+                      <Route path="/configuracoes" element={<Settings />} />
+                      <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />
+                      <Route path="/estoque/transferencias" element={<Stock />} />
+                    </Route>
+
+                    {/* SELLER ONLY ROUTES */}
+                    <Route element={<ProtectedRoute requiredProfile="vendedor" />}>
+                      <Route path="/meu-painel" element={<SellerDashboard />} />
+                      <Route path="/minhas-vendas" element={<SalesList mySalesOnly={true} />} />
+                      <Route path="/minhas-comissoes" element={<MyCommissions />} />
+                    </Route>
+
+                    {/* NETWORK ADMIN ROUTES */}
+                    <Route element={<ProtectedRoute requiredNetworkRole="admin_rede" />}>
+                      <Route path="/franquias" element={<Franchises />} />
+                    </Route>
+
+                    {/* COMMON ACCESSIBLE ROUTES (with internal role checks) */}
+                    <Route path="/vendas/nova" element={<NewSale />} />
+                    <Route path="/vendas/:id" element={<SaleDetail />} />
+                    <Route path="/produtos" element={<Products />} />
+                    <Route path="/produtos/:id" element={<Products />} />
+                    <Route path="/estoque" element={<Stock />} />
+                    <Route path="/clientes" element={<CustomersList />} />
+                    <Route path="/clientes/:id" element={<CustomerDetail />} />
+                  </Route>
+                </Route>
+
+                {/* 403 & 404 */}
+                <Route path="/403" element={<Forbidden />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

@@ -16,10 +16,13 @@ export default function Settings() {
   const [categories, setCategories] = useState<CategoryRecord[]>([])
   const [newCatName, setNewCatName] = useState('')
 
-  // Discount & Installment limits
-  const [maxDiscPix, setMaxDiscPix] = useState('10')
-  const [maxDiscDinheiro, setMaxDiscDinheiro] = useState('10')
-  const [maxDiscCartao, setMaxDiscCartao] = useState('5')
+  // Limites de desconto: em branco = não definido, e qualquer desconto nessa
+  // forma de pagamento pede o motivo ao vendedor (como o servidor confere).
+  // Sem valor sugerido: os de exemplo foram removidos na Fase 0.
+  const [maxDiscPix, setMaxDiscPix] = useState('')
+  const [maxDiscDinheiro, setMaxDiscDinheiro] = useState('')
+  const [maxDiscCartao, setMaxDiscCartao] = useState('')
+  const [maxDiscDebito, setMaxDiscDebito] = useState('')
   const [maxInstallments, setMaxInstallments] = useState('12')
 
   const { toast } = useToast()
@@ -38,6 +41,7 @@ export default function Settings() {
       if (settings.max_discount_dinheiro) setMaxDiscDinheiro(settings.max_discount_dinheiro)
       if (settings.max_discount_cartao_credito)
         setMaxDiscCartao(settings.max_discount_cartao_credito)
+      if (settings.max_discount_cartao_debito) setMaxDiscDebito(settings.max_discount_cartao_debito)
       if (settings.max_installments_cartao_credito)
         setMaxInstallments(settings.max_installments_cartao_credito)
     } catch (err) {
@@ -70,6 +74,7 @@ export default function Settings() {
         SettingsService.set('max_discount_pix', maxDiscPix),
         SettingsService.set('max_discount_dinheiro', maxDiscDinheiro),
         SettingsService.set('max_discount_cartao_credito', maxDiscCartao),
+        SettingsService.set('max_discount_cartao_debito', maxDiscDebito),
         SettingsService.set('max_installments_cartao_credito', maxInstallments),
       ])
       toast({
@@ -104,7 +109,7 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="regras" className="space-y-4">
-        <TabsList className="bg-white border border-gray-200">
+        <TabsList className="bg-white border border-gray-200 flex-wrap h-auto justify-start">
           <TabsTrigger
             value="regras"
             className="data-[state=active]:bg-[#0A8F5C] data-[state=active]:text-white"
@@ -133,9 +138,9 @@ export default function Settings() {
                 Limites Comerciais para Balcão
               </CardTitle>
               <CardDescription>
-                Configure os limites máximos de desconto permitidos por forma de pagamento e o
-                limite de parcelas sem juros no cartão. Vendedores são impedidos pelo sistema de
-                conceder descontos acima destes limites.
+                Toda venda de vendedor passa pelo administrador antes da nota fiscal. Desconto acima
+                do limite da forma de pagamento chega destacado na aprovação, com o motivo escrito
+                pelo vendedor. Em branco, qualquer desconto nessa forma de pagamento pede o motivo.
               </CardDescription>
             </CardHeader>
 
@@ -151,6 +156,7 @@ export default function Settings() {
                     min="0"
                     max="100"
                     value={maxDiscPix}
+                    placeholder="Não definido"
                     onChange={(e) => setMaxDiscPix(e.target.value)}
                   />
                   <span className="text-sm font-semibold text-gray-500">%</span>
@@ -168,6 +174,7 @@ export default function Settings() {
                     min="0"
                     max="100"
                     value={maxDiscDinheiro}
+                    placeholder="Não definido"
                     onChange={(e) => setMaxDiscDinheiro(e.target.value)}
                   />
                   <span className="text-sm font-semibold text-gray-500">%</span>
@@ -185,7 +192,26 @@ export default function Settings() {
                     min="0"
                     max="100"
                     value={maxDiscCartao}
+                    placeholder="Não definido"
                     onChange={(e) => setMaxDiscCartao(e.target.value)}
+                  />
+                  <span className="text-sm font-semibold text-gray-500">%</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="debitDisc" className="text-xs font-semibold text-gray-700">
+                  Desconto Máximo no Cartão de Débito (%)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="debitDisc"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={maxDiscDebito}
+                    onChange={(e) => setMaxDiscDebito(e.target.value)}
+                    placeholder="Não definido"
                   />
                   <span className="text-sm font-semibold text-gray-500">%</span>
                 </div>

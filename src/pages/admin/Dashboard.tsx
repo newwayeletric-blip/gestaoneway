@@ -163,6 +163,9 @@ export function AdminDashboard() {
     // Filter sales by competence date (confirmation/creation)
     for (const s of sales) {
       if (selectedStore !== 'all' && s.store !== selectedStore) continue
+      // Só venda confirmada pelo administrador é faturamento: rascunho,
+      // aguardando aprovação e recusada ficam de fora.
+      const counted = s.status === 'confirmada' || s.status === 'devolvida'
 
       const inCurrent = isDateInSelectedPeriod(s.created)
       const inPrevious = isDateInPreviousPeriod(s.created)
@@ -171,14 +174,14 @@ export function AdminDashboard() {
         if (s.status === 'cancelada') {
           // Track cancellation without double counting into revenue
           cancellations += s.total
-        } else {
+        } else if (counted) {
           grossSales += s.subtotal || s.total
           discounts += s.total_discount || 0
           // Estimate standard CMV if snapshot not present
           const saleCmv = s.total * 0.58
           cmv += saleCmv
         }
-      } else if (inPrevious && s.status !== 'cancelada') {
+      } else if (inPrevious && counted) {
         prevNetRevenue += s.total
         prevOperatingResult += s.total * 0.22
       }

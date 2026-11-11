@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { SalesService, CommissionsService, StockService } from '@/services/api'
 import type { SaleRecord, CommissionRecord } from '@/types'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
+import { saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
 import useRealtime from '@/hooks/use-realtime'
 import {
   ShoppingCart,
@@ -36,7 +37,7 @@ export default function SellerDashboard() {
       setSales(mySales)
 
       // 2. My commissions only
-      const myComms = await CommissionsService.getAll(user.id)
+      const myComms = await CommissionsService.getAll(`seller = "${user.id}"`)
       setCommissions(myComms)
 
       // 3. Low stock (quantities only, never costs)
@@ -65,8 +66,9 @@ export default function SellerDashboard() {
   const totalVendido = confirmedSales.reduce((acc, s) => acc + s.total, 0)
   const ticketMedio = confirmedSales.length > 0 ? totalVendido / confirmedSales.length : 0
 
+  // A receber: prevista (venda com saldo), liberada (venda paga) e as antigas "pendente".
   const comissoesPendentes = commissions
-    .filter((c) => c.status === 'pendente')
+    .filter((c) => c.status === 'prevista' || c.status === 'liberada' || c.status === 'pendente')
     .reduce((acc, c) => acc + c.value, 0)
   const comissoesPagas = commissions
     .filter((c) => c.status === 'paga')
@@ -194,16 +196,8 @@ export default function SellerDashboard() {
                     <td className="py-3 px-3 text-gray-500">{s.expand?.store?.name || '—'}</td>
                     <td className="py-3 px-3 font-semibold text-[#0A8F5C]">{formatBRL(s.total)}</td>
                     <td className="py-3 px-3">
-                      <Badge
-                        className={
-                          s.status === 'confirmada'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : s.status === 'rascunho'
-                              ? 'bg-gray-100 text-gray-800'
-                              : 'bg-red-100 text-red-800'
-                        }
-                      >
-                        {s.status.toUpperCase()}
+                      <Badge className={saleStatusClass(s.status)}>
+                        {saleStatusLabel(s.status)}
                       </Badge>
                     </td>
                     <td className="py-3 px-3 text-gray-400">{formatDateBR(s.created)}</td>

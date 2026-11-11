@@ -87,6 +87,7 @@ export interface StoreRecord {
   status?: 'ativa' | 'inativa'
   org?: string
   legal_entity?: string // CNPJ atual da loja
+  code?: string // prefixo do número das vendas (JP-000123)
   created: string
   updated: string
 }
@@ -160,6 +161,7 @@ export type MovementType =
   | 'perda'
   | 'avaria'
   | 'ajuste'
+  | 'cancelamento_venda'
 
 export interface StockMovementRecord {
   id: string
@@ -235,7 +237,15 @@ export interface CustomerRecord {
   }
 }
 
-export type SaleStatus = 'rascunho' | 'confirmada' | 'cancelada' | 'devolvida'
+// A venda do vendedor espera o administrador (aguardando_aprovacao) antes da
+// NF; recusada = cancelada antes da aprovação, com o estoque devolvido.
+export type SaleStatus =
+  | 'rascunho'
+  | 'aguardando_aprovacao'
+  | 'confirmada'
+  | 'recusada'
+  | 'cancelada'
+  | 'devolvida'
 export type SalePaymentStatus = 'pendente' | 'parcial' | 'pago'
 export type SaleDeliveryStatus = 'pendente' | 'entregue'
 export type PaymentMethod = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito'
@@ -265,6 +275,16 @@ export interface SaleRecord {
   canceled_by?: string
   canceled_at?: string
   idempotency_key?: string
+  submitted_at?: string
+  confirmed_by?: string
+  confirmed_at?: string
+  rejected_by?: string
+  rejected_at?: string
+  rejection_reason?: string
+  discount_over_limit?: boolean
+  discount_limit_pct?: number // -1 = limite não configurado
+  discount_reason?: string
+  pending_balance?: number
   created: string
   updated: string
   expand?: {
@@ -274,6 +294,8 @@ export interface SaleRecord {
     authorized_by?: UserRecord
     canceled_by?: UserRecord
     delivered_by?: UserRecord
+    confirmed_by?: UserRecord
+    rejected_by?: UserRecord
   }
 }
 

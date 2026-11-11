@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
+import { saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
 import { toast } from '@/hooks/use-toast'
 import { SaleReceipt } from '@/components/SaleReceipt'
 import { openProtectedFile } from '@/lib/pocketbase/client'
@@ -59,6 +60,13 @@ export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user, isAdmin } = useAuth()
+  const salesPath = isAdmin ? '/vendas' : '/minhas-vendas'
+
+  // Decisão do administrador sobre venda aguardando aprovação.
+  const [approvalNote, setApprovalNote] = useState('')
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [isDeciding, setIsDeciding] = useState(false)
 
   const [sale, setSale] = useState<SaleRecord | null>(null)
   const [items, setItems] = useState<SaleItemRecord[]>([])
@@ -160,15 +168,56 @@ export function SaleDetail() {
     setIsReturnModalOpen(true)
   }
 
-  // Handle Cancel
+  // Regra do dono: aprovar confirma a venda e libera a NF.
+  const handleApprove = async () => {
+    if (!sale) return
+    setIsDeciding(true)
+    try {
+      await SalesService.approveSale(sale.id, approvalNote.trim())
+      toast({
+        title: `Venda ${sale.number} aprovada`,
+        description: 'A nota fiscal já pode ser emitida.',
+      })
+      setApprovalNote('')
+      loadData()
+    } catch (err: any) {
+      toast({ title: 'A venda não foi aprovada', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsDeciding(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!sale) return
+    setIsDeciding(true)
+    try {
+      await SalesService.rejectSale(sale.id, rejectReason.trim())
+      toast({
+        title: `Venda ${sale.number} recusada`,
+        description: 'O estoque reservado voltou para a loja.',
+      })
+      setIsRejectModalOpen(false)
+      setRejectReason('')
+      loadData()
+    } catch (err: any) {
+      toast({ title: 'A venda não foi recusada', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsDeciding(false)
+    }
+  }
+
+  // Cancelamento pelo servidor: estoque volta e a comissão é estornada.
   const handleConfirmCancel = async () => {
-    if (!sale || !cancelReason.trim()) {
-      toast({ title: 'Justificativa de cancelamento é obrigatória', variant: 'destructive' })
+    if (!sale || cancelReason.trim().length < 5) {
+      toast({
+        title: 'Escreva o motivo do cancelamento (mínimo de 5 caracteres)',
+        variant: 'destructive',
+      })
       return
     }
     setIsCanceling(true)
     try {
-      await SalesService.cancelSale(sale.id, cancelReason, user!.id)
+      await SalesService.cancelSale(sale.id, cancelReason.trim())
       toast({ title: 'Venda cancelada com sucesso!' })
       setIsCancelModalOpen(false)
       loadData()
@@ -267,6 +316,12 @@ export function SaleDetail() {
     }
   }
 
+  // A NF só entra em venda confirmada; antes disso o padrão é o comprovante.
+  const openDocModal = () => {
+    setDocType(sale?.status === 'confirmada' ? 'nota_fiscal' : 'comprovante_pagamento')
+    setIsDocModalOpen(true)
+  }
+
   // Handle Document Upload
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -327,37 +382,31 @@ export function SaleDetail() {
     return (
       <div className="p-8 text-center">
         <p className="text-red-500 font-semibold mb-2">Venda não encontrada.</p>
-        <Button onClick={() => navigate('/sales')}>Voltar</Button>
+        <Button onClick={() => navigate(salesPath)}>Voltar</Button>
       </div>
     )
   }
 
   const isConfirmed = sale.status === 'confirmada'
   const isCanceled = sale.status === 'cancelada'
+  const isPending = sale.status === 'aguardando_aprovacao'
+  const isRejected = sale.status === 'recusada'
   const isDelivered = sale.delivery_status === 'entregue'
+  const pendingBalance = sale.pending_balance || 0
+  const discountLimit = sale.discount_limit_pct ?? -1
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(salesPath)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight">Venda {sale.number}</h1>
-              <Badge
-                variant={
-                  sale.status === 'confirmada'
-                    ? 'default'
-                    : sale.status === 'cancelada'
-                      ? 'destructive'
-                      : 'secondary'
-                }
-              >
-                {sale.status.toUpperCase()}
-              </Badge>
+              <Badge className={saleStatusClass(sale.status)}>{saleStatusLabel(sale.status)}</Badge>
               <Badge variant="outline" className="text-xs">
                 Pagamento: {sale.payment_status || 'pago'}
               </Badge>
@@ -373,8 +422,9 @@ export function SaleDetail() {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Mark delivery if confirmed and pending */}
-          {isConfirmed && !isDelivered && (
+          {/* Entrega: só o administrador; a regra do servidor não deixa o
+              vendedor alterar uma venda já enviada. */}
+          {isAdmin && isConfirmed && !isDelivered && (
             <Button
               variant="outline"
               size="sm"
@@ -387,7 +437,7 @@ export function SaleDetail() {
           )}
 
           {/* Admin Cancel / Return actions */}
-          {isAdmin && isConfirmed && !isCanceled && (
+          {isAdmin && isConfirmed && (
             <>
               <Button
                 variant="outline"
@@ -398,25 +448,152 @@ export function SaleDetail() {
                 <RotateCcw className="h-4 w-4 mr-1.5" />
                 Registrar Devolução
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsCancelModalOpen(true)}
-                className="text-red-600 border-red-300 hover:bg-red-50"
-              >
-                <Ban className="h-4 w-4 mr-1.5" />
-                Cancelar Venda
-              </Button>
+              {!isDelivered && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCancelModalOpen(true)}
+                  className="text-red-600 border-red-300 hover:bg-red-50"
+                >
+                  <Ban className="h-4 w-4 mr-1.5" />
+                  Cancelar Venda
+                </Button>
+              )}
             </>
           )}
 
           {/* Add Document button */}
-          <Button size="sm" variant="default" onClick={() => setIsDocModalOpen(true)}>
+          <Button size="sm" variant="default" onClick={openDocModal}>
             <Upload className="h-4 w-4 mr-1.5" />
-            Anexar Documento / NF
+            {isConfirmed ? 'Anexar Documento / NF' : 'Anexar Documento'}
           </Button>
         </div>
       </div>
+
+      {/* Regra do dono: a NF só sai depois que o administrador confirma. */}
+      {isPending && !isAdmin && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="pt-4 flex items-start gap-3 text-amber-900 text-sm">
+            <Clock className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Aguardando aprovação do administrador</p>
+              <p className="mt-0.5">
+                O produto está reservado nesta loja. <strong>Não emita a nota fiscal</strong> antes
+                da aprovação.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isPending && isAdmin && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="pt-4 space-y-3 text-sm text-amber-950">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 shrink-0 mt-0.5 text-amber-700" />
+              <div className="space-y-1">
+                <p className="font-semibold">
+                  Venda aguardando a sua aprovação
+                  {sale.expand?.seller?.name ? ` · enviada por ${sale.expand.seller.name}` : ''}
+                  {sale.submitted_at ? ` em ${formatDateBR(sale.submitted_at, true)}` : ''}
+                </p>
+                <p>
+                  O produto já está reservado. Ao aprovar, a venda é confirmada, a comissão é
+                  calculada e a nota fiscal pode ser emitida.
+                </p>
+                {sale.discount_over_limit && (
+                  <p className="font-medium text-amber-900">
+                    Desconto de {formatBRL(sale.total_discount)}
+                    {sale.subtotal > 0
+                      ? ` (${((sale.total_discount / sale.subtotal) * 100).toFixed(1).replace('.', ',')}%)`
+                      : ''}{' '}
+                    {discountLimit >= 0
+                      ? `acima do limite de ${discountLimit}%`
+                      : 'sem limite configurado para esta forma de pagamento'}
+                    . Motivo do vendedor: “{sale.discount_reason || 'não informado'}”
+                  </p>
+                )}
+                {pendingBalance > 0 && (
+                  <p className="font-medium text-amber-900">
+                    Saldo pendente de {formatBRL(pendingBalance)}: o cliente ainda não pagou tudo.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="approval-note" className="text-xs text-amber-900">
+                {pendingBalance > 0
+                  ? 'Justificativa do saldo pendente (obrigatória)'
+                  : 'Observação (opcional)'}
+              </Label>
+              <Textarea
+                id="approval-note"
+                value={approvalNote}
+                onChange={(e) => setApprovalNote(e.target.value)}
+                rows={2}
+                className="bg-white text-sm"
+                placeholder={
+                  pendingBalance > 0 ? 'Ex.: cliente paga o restante na retirada' : 'Opcional'
+                }
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={handleApprove}
+                disabled={isDeciding || (pendingBalance > 0 && approvalNote.trim().length < 5)}
+                className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                Aprovar venda
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsRejectModalOpen(true)}
+                disabled={isDeciding}
+                className="text-red-600 border-red-300 hover:bg-red-50"
+              >
+                <Ban className="h-4 w-4 mr-1.5" />
+                Recusar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isConfirmed && (
+        <Card className="border-emerald-300 bg-emerald-50/50">
+          <CardContent className="pt-4 flex items-start gap-3 text-emerald-900 text-sm">
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-[#0A8F5C]" />
+            <div>
+              <p className="font-semibold">
+                Venda confirmada
+                {sale.expand?.confirmed_by?.name ? ` por ${sale.expand.confirmed_by.name}` : ''}
+                {sale.confirmed_at ? ` em ${formatDateBR(sale.confirmed_at, true)}` : ''}
+              </p>
+              <p className="mt-0.5">A nota fiscal pode ser emitida e anexada nesta venda.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isRejected && (
+        <Card className="border-red-300 bg-red-50/50">
+          <CardContent className="pt-4 flex items-start gap-3 text-red-800 text-sm">
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                Venda recusada
+                {sale.expand?.rejected_by?.name ? ` por ${sale.expand.rejected_by.name}` : ''}
+              </p>
+              <p className="mt-0.5">Motivo: {sale.rejection_reason || 'não informado'}</p>
+              <p className="mt-0.5 text-xs">
+                O estoque reservado voltou para a loja. Se o cliente ainda quiser comprar, lance uma
+                venda nova.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cancellation Notice if canceled */}
       {isCanceled && (
@@ -653,7 +830,13 @@ export function SaleDetail() {
         <TabsContent value="recibo">
           <Card>
             <CardContent className="pt-6">
-              <SaleReceipt saleId={sale.id} />
+              {isConfirmed || sale.status === 'devolvida' ? (
+                <SaleReceipt saleId={sale.id} />
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  O comprovante fica disponível depois que o administrador confirmar a venda.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -670,7 +853,7 @@ export function SaleDetail() {
                   PDF, XML da nota fiscal externa, termos de garantia e comprovantes assinados
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => setIsDocModalOpen(true)}>
+              <Button size="sm" onClick={openDocModal}>
                 <Upload className="h-4 w-4 mr-1.5" />
                 Novo Anexo
               </Button>
@@ -743,8 +926,9 @@ export function SaleDetail() {
               Cancelar Venda {sale.number}
             </DialogTitle>
             <DialogDescription>
-              Apenas administradores podem cancelar. O estoque será liberado (se não entregue) e as
-              comissões serão estornadas proporcionalmente. Registros não são apagados.
+              O estoque volta para a loja, a comissão é estornada e o valor recebido fica como
+              reembolso pendente. Nada é apagado. Se a nota fiscal já foi emitida, cancele-a também
+              no emissor de notas.
             </DialogDescription>
           </DialogHeader>
 
@@ -768,10 +952,48 @@ export function SaleDetail() {
             </Button>
             <Button
               variant="destructive"
-              disabled={!cancelReason.trim() || isCanceling}
+              disabled={cancelReason.trim().length < 5 || isCanceling}
               onClick={handleConfirmCancel}
             >
               Confirmar Cancelamento com Auditoria
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: RECUSAR VENDA */}
+      <Dialog open={isRejectModalOpen} onOpenChange={setIsRejectModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Ban className="h-5 w-5" />
+              Recusar a venda {sale.number}
+            </DialogTitle>
+            <DialogDescription>
+              A venda fica recusada com o motivo, e o estoque reservado volta para a loja. O
+              vendedor vê o motivo e pode lançar uma venda nova.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label htmlFor="reject-reason">Motivo *</Label>
+            <Textarea
+              id="reject-reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+              placeholder="Ex.: desconto acima do que a loja pode dar"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={rejectReason.trim().length < 5 || isDeciding}
+              onClick={handleReject}
+            >
+              Recusar venda
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1025,13 +1247,20 @@ export function SaleDetail() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="nota_fiscal">Nota Fiscal (PDF ou XML)</SelectItem>
+                    {isConfirmed && (
+                      <SelectItem value="nota_fiscal">Nota Fiscal (PDF ou XML)</SelectItem>
+                    )}
                     <SelectItem value="comprovante_pagamento">Comprovante de Pagamento</SelectItem>
                     <SelectItem value="recibo_entrega">Recibo / Termo de Entrega</SelectItem>
                     <SelectItem value="termo_garantia">Termo de Garantia Assinado</SelectItem>
                     <SelectItem value="outro">Outro Documento</SelectItem>
                   </SelectContent>
                 </Select>
+                {!isConfirmed && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    A nota fiscal só pode ser anexada depois que o administrador confirmar a venda.
+                  </p>
+                )}
               </div>
 
               <div>

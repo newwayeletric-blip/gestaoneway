@@ -92,6 +92,14 @@ export default function Stock() {
     loadData()
   }, [selectedStore])
 
+  // As lojas podem chegar depois da montagem: preenche as lojas padrão dos formulários.
+  useEffect(() => {
+    if (stores.length === 0) return
+    setEntryStore((cur) => cur || stores[0].id)
+    setOriginStore((cur) => cur || stores[0].id)
+    setDestStore((cur) => cur || stores[1]?.id || '')
+  }, [stores])
+
   useRealtime('stock_items', () => loadData())
   useRealtime('transfers', () => loadData())
   useRealtime('stock_movements', () => loadData())
@@ -164,7 +172,8 @@ export default function Stock() {
 
   const handleRecordEntry = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!entryProduct || !entryStore || Number(entryQty) <= 0) {
+    const minQty = entryType === 'ajuste' ? 0 : 1
+    if (!entryProduct || !entryStore || entryQty === '' || Number(entryQty) < minQty) {
       toast({
         title: 'Atenção',
         description: 'Preencha o produto, loja e quantidade.',
@@ -183,16 +192,18 @@ export default function Stock() {
     }
 
     try {
-      await StockService.recordMovement({
+      const res = await StockService.recordManualEntry({
         type: entryType,
         product: entryProduct,
         store: entryStore,
         quantity: Number(entryQty),
-        reason: entryReason.trim() || 'Entrada manual pelo administrador',
-        source_ref: 'MANUAL-ADMIN',
+        reason: entryReason.trim(),
       })
 
-      toast({ title: 'Movimentação registrada com sucesso!' })
+      toast({
+        title: 'Movimentação registrada com sucesso!',
+        description: `Saldo da loja: ${res.previous} → ${res.quantity} un.`,
+      })
       setIsEntryModalOpen(false)
       setEntryProduct('')
       setEntryQty('1')
@@ -239,7 +250,7 @@ export default function Stock() {
       </div>
 
       <Tabs defaultValue="posicao" className="space-y-4">
-        <TabsList className="bg-white border border-gray-200">
+        <TabsList className="bg-white border border-gray-200 flex-wrap h-auto justify-start">
           <TabsTrigger
             value="posicao"
             className="data-[state=active]:bg-[#0A8F5C] data-[state=active]:text-white"
@@ -296,14 +307,18 @@ export default function Stock() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {stockItems.map((stk) => {
-                    const min = stk.expand?.product?.min_stock || 0
-                    const isLow = min > 0 && stk.quantity <= min
-                    const isZero = stk.quantity === 0
+                    const min = Number(stk.expand?.product?.min_stock) || 0
+                    // Saldo vazio no banco conta como zero.
+                    const qty = Number(stk.quantity) || 0
+                    const isLow = min > 0 && qty <= min
+                    const isZero = qty <= 0
 
                     return (
                       <tr key={stk.id} className="hover:bg-gray-50/50">
                         <td className="py-3 px-3">
-                          <p className="font-semibold text-gray-900">{stk.expand?.product?.name}</p>
+                          <p className="font-semibold text-gray-900">
+                            {stk.expand?.product?.name || 'Produto removido'}
+                          </p>
                           {stk.expand?.variant && (
                             <p className="text-[11px] text-gray-500">{stk.expand?.variant?.name}</p>
                           )}
@@ -324,7 +339,7 @@ export default function Stock() {
                                   : 'bg-emerald-50 text-[#0A8F5C]'
                             }`}
                           >
-                            {stk.quantity} un
+                            {qty} un
                           </span>
                         </td>
                         <td className="py-3 px-3 text-center text-gray-400 font-mono">{min} un</td>
@@ -363,9 +378,7 @@ export default function Stock() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-base text-[#111111]">Transferências de Estoque</h3>
-                <p className="text-xs text-gray-500">
-                  Itens transferidos entre as lojas.
-                </p>
+                <p className="text-xs text-gray-500">Itens transferidos entre as lojas.</p>
               </div>
             </div>
 
@@ -475,20 +488,28 @@ export default function Stock() {
                     <tr key={m.id} className="hover:bg-gray-50/50">
                       <td className="py-3 px-3">
                         <span className="font-semibold uppercase text-[10px] tracking-wider text-gray-700">
-                          {m.type.replace('_', ' ')}
+                          {(m.type || '').replace('_', ' ')}
                         </span>
                       </td>
                       <td className="py-3 px-3 font-medium text-gray-900">
                         {m.expand?.product?.name}
                       </td>
-                      <td className="py-3 px-3 text-gray-600">
-                        {m.expand?.store?.name || '—'}
-                      </td>
+                      <td className="py-3 px-3 text-gray-600">{m.expand?.store?.name || '—'}</td>
                       <td className="py-3 px-3 font-mono font-bold text-gray-800">
-                        {['entrada', 'transferencia_recebimento', 'devolucao'].includes(m.type)
-                          ? '+'
-                          : '-'}
-                        {m.quantity} un
+                        {/* Ajuste e estorno guardam a diferença com sinal. */}
+                        {m.type === 'ajuste'
+                          ? Number(m.quantity) >= 0
+                            ? '+'
+                            : '-'
+                          : [
+                                'entrada',
+                                'transferencia_recebimento',
+                                'devolucao',
+                                'cancelamento_venda',
+                              ].includes(m.type)
+                            ? '+'
+                            : '-'}
+                        {Math.abs(Number(m.quantity) || 0)} un
                       </td>
                       <td className="py-3 px-3 text-gray-500 truncate max-w-xs">
                         {m.reason || m.source_ref || '-'}
@@ -659,10 +680,12 @@ export default function Stock() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Quantidade</Label>
+              <Label className="text-xs">
+                {entryType === 'ajuste' ? 'Saldo contado na loja' : 'Quantidade'}
+              </Label>
               <Input
                 type="number"
-                min="1"
+                min={entryType === 'ajuste' ? '0' : '1'}
                 value={entryQty}
                 onChange={(e) => setEntryQty(e.target.value)}
                 required

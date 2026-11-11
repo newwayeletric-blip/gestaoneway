@@ -66,12 +66,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const list = await StoresService.getAll()
       setStores(list)
-      // Auto-select store if activeStoreId is empty or invalid
-      if (list.length > 0) {
-        if (!activeStoreId || !list.some((s) => s.id === activeStoreId)) {
-          setActiveStoreIdState(list[0].id)
-          localStorage.setItem('nwe_active_store_id', list[0].id)
-        }
+      // Loja ativa vazia ou fora das lojas autorizadas (mesma regra de
+      // authorizedStores): começa pela primeira autorizada. O registro vem do
+      // authStore porque o estado "user" ainda é o da montagem aqui.
+      const record = pb.authStore.record
+      const mine: string[] = record?.profile === 'admin' ? [] : record?.stores || []
+      const allowed = mine.length > 0 ? list.filter((s) => mine.includes(s.id)) : list
+      if (allowed.length > 0 && !allowed.some((s) => s.id === activeStoreId)) {
+        setActiveStoreIdState(allowed[0].id)
+        localStorage.setItem('nwe_active_store_id', allowed[0].id)
       }
     } catch {
       // ignore

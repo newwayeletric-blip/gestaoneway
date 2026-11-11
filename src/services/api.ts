@@ -30,6 +30,8 @@ import type {
   OrganizationRecord,
   LegalEntityRecord,
   FranchiseSummary,
+  SaleStatus,
+  PaymentMethod,
 } from '@/types'
 
 export const StoresService = {
@@ -332,6 +334,22 @@ export const StockService = {
     return await this.createMovement(data)
   },
 
+  // Entrada, avaria, perda ou ajuste manual: o servidor grava a movimentação e
+  // atualiza o saldo da loja na mesma transação. No ajuste, quantity é o saldo
+  // contado na loja.
+  async recordManualEntry(data: {
+    type: 'entrada' | 'ajuste' | 'perda' | 'avaria'
+    product: string
+    store: string
+    quantity: number
+    reason: string
+  }) {
+    return await pb.send<{ movement: string; previous: number; quantity: number }>(
+      '/backend/v1/stock/manual',
+      { method: 'POST', body: data },
+    )
+  },
+
   async cancelTransfer(transferId: string) {
     const transfer = await pb.collection('transfers').getOne<TransferRecord>(transferId)
     if (transfer.status !== 'em_transito') {
@@ -414,6 +432,23 @@ export const StockService = {
       items = itemsOrNote as Array<{ product: string; variant?: string; quantity: number }>
       note = optionalNote || ''
     }
+
+    // A origem precisa ter o saldo: antes a transferência zerava a origem e a
+    // loja de destino recebia unidades que não existiam.
+    for (const item of items) {
+      let filter = `store = '${origin_store}' && product = '${item.product}'`
+      filter += item.variant
+        ? ` && variant = '${item.variant}'`
+        : ` && (variant = '' || variant = null)`
+      const rows = await pb.collection('stock_items').getFullList<StockItemRecord>({ filter })
+      const available = rows.length > 0 ? Number(rows[0].quantity) || 0 : 0
+      if (item.quantity > available) {
+        throw new Error(
+          `A loja de origem tem só ${available} un deste produto. Não dá para transferir ${item.quantity}.`,
+        )
+      }
+    }
+
     const transfer = await pb.collection('transfers').create<TransferRecord>({
       origin_store,
       destination_store,
@@ -541,12 +576,36 @@ export const SettingsService = {
   },
 }
 
+const SALE_EXPAND =
+  'customer,store,seller,authorized_by,canceled_by,delivered_by,confirmed_by,rejected_by'
+
+export interface SaleSubmission {
+  idempotency_key: string
+  store: string
+  customer: string
+  observation?: string
+  discount_reason?: string
+  items: {
+    product: string
+    variant?: string
+    quantity: number
+    discount: number
+    serial_number?: string
+  }[]
+  payments: {
+    method: PaymentMethod
+    amount: number
+    installments?: number
+    received_amount?: number
+  }[]
+}
+
 export const SalesService = {
   async list(filter = '', page = 1, perPage = 20) {
     return await pb.collection('sales').getList<SaleRecord>(page, perPage, {
       filter,
       sort: '-created',
-      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
+      expand: SALE_EXPAND,
     })
   },
 
@@ -554,18 +613,55 @@ export const SalesService = {
     return await pb.collection('sales').getFullList<SaleRecord>({
       filter,
       sort: '-created',
-      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
+      expand: SALE_EXPAND,
     })
-  },
-
-  async cancelOrReturnSale(saleId: string, reason: string, adminUserId: string) {
-    return this.cancelSale(saleId, reason, adminUserId)
   },
 
   async getById(id: string): Promise<SaleRecord> {
     return await pb.collection('sales').getOne<SaleRecord>(id, {
-      expand: 'customer,store,seller,authorized_by,canceled_by,delivered_by',
+      expand: SALE_EXPAND,
     })
+  },
+
+  // Fase 1: a venda entra pelo servidor numa transação só (preço do catálogo,
+  // estoque reservado, número da loja) e espera o administrador, porque a NF
+  // só sai depois da aprovação (regra do dono). A mesma chave de
+  // idempotência devolve a venda já criada.
+  async submitSale(payload: SaleSubmission) {
+    return await pb.send<{ id: string; number: string; status: SaleStatus; duplicate?: boolean }>(
+      '/backend/v1/sales',
+      { method: 'POST', body: payload },
+    )
+  },
+
+  async approveSale(saleId: string, note = '') {
+    return await pb.send<{ id: string; number: string; status: SaleStatus }>(
+      `/backend/v1/sales/${saleId}/approve`,
+      { method: 'POST', body: { note } },
+    )
+  },
+
+  // Recusa a venda aguardando aprovação; o estoque reservado volta.
+  async rejectSale(saleId: string, reason: string) {
+    return await pb.send<{ id: string; number: string; status: SaleStatus }>(
+      `/backend/v1/sales/${saleId}/reject`,
+      { method: 'POST', body: { reason } },
+    )
+  },
+
+  // Cancela venda confirmada e não entregue: estoque volta, comissão estornada.
+  async cancelSale(saleId: string, reason: string) {
+    return await pb.send<{ id: string; number: string; status: SaleStatus }>(
+      `/backend/v1/sales/${saleId}/cancel`,
+      { method: 'POST', body: { reason } },
+    )
+  },
+
+  async countAwaitingApproval(): Promise<number> {
+    const res = await pb.collection('sales').getList<SaleRecord>(1, 1, {
+      filter: "status = 'aguardando_aprovacao'",
+    })
+    return res.totalItems
   },
 
   async getItems(saleId: string): Promise<SaleItemRecord[]> {
@@ -625,76 +721,6 @@ export const SalesService = {
     return await pb.collection('sale_documents').delete(docId)
   },
 
-  async generateNextNumber(): Promise<string> {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    const prefix = `VEN-${yyyy}${mm}-`
-
-    const lastSales = await pb.collection('sales').getList<SaleRecord>(1, 1, {
-      filter: `number ~ '${prefix}'`,
-      sort: '-number',
-    })
-
-    if (lastSales.items.length === 0) {
-      return `${prefix}0001`
-    }
-
-    const lastNum = lastSales.items[0].number
-    const sequencePart = parseInt(lastNum.replace(prefix, ''), 10) || 0
-    return `${prefix}${String(sequencePart + 1).padStart(4, '0')}`
-  },
-
-  async createDraftSale(
-    saleData: Partial<SaleRecord>,
-    items: Array<Partial<SaleItemRecord>>,
-    payments: Array<Partial<SalePaymentRecord>>,
-  ): Promise<SaleRecord> {
-    const number = await this.generateNextNumber()
-    const sale = await pb.collection('sales').create<SaleRecord>({
-      ...saleData,
-      number,
-      status: 'rascunho',
-      delivery_status: 'pendente',
-    })
-
-    for (const item of items) {
-      await pb.collection('sale_items').create({
-        ...item,
-        sale: sale.id,
-      })
-    }
-
-    for (const p of payments) {
-      await pb.collection('sale_payments').create({
-        ...p,
-        sale: sale.id,
-        confirmed: false,
-      })
-    }
-
-    return sale
-  },
-
-  async confirmSale(saleId: string) {
-    // Calls our atomic server endpoint which enforces:
-    // - transaction consistency
-    // - monthly closed period check
-    // - exact payment coverage or admin authorization
-    // - concurrency check on stock
-    // - stock decrements and movements
-    // - commission calculation item by item
-    // - audit logging
-    const res = await pb.send<{ success: boolean; saleId: string; number: string }>(
-      '/backend/v1/nwe/confirm-sale',
-      {
-        method: 'POST',
-        body: { saleId },
-      },
-    )
-    return res
-  },
-
   async registerDelivery(saleId: string, deliveredByUserId: string) {
     const sale = await pb.collection('sales').getOne<SaleRecord>(saleId)
     if (sale.status !== 'confirmada') {
@@ -711,84 +737,6 @@ export const SalesService = {
       delivered_at: new Date().toISOString(),
       delivered_by: deliveredByUserId,
     })
-  },
-
-  async cancelSale(saleId: string, reason: string, adminUserId: string) {
-    const sale = await pb.collection('sales').getOne<SaleRecord>(saleId)
-    if (sale.status === 'cancelada') {
-      throw new Error('Esta venda já está cancelada.')
-    }
-
-    const items = await pb.collection('sale_items').getFullList<SaleItemRecord>({
-      filter: `sale = '${saleId}'`,
-    })
-
-    // If sale was confirmed and NOT delivered yet, return stock once
-    if (sale.status === 'confirmada' && sale.delivery_status !== 'entregue') {
-      for (const item of items) {
-        if (!item.product) continue
-        let stockFilter = `store = '${sale.store}' && product = '${item.product}'`
-        if (item.variant) {
-          stockFilter += ` && variant = '${item.variant}'`
-        } else {
-          stockFilter += ` && (variant = '' || variant = null)`
-        }
-        const existingStock = await pb.collection('stock_items').getFullList<StockItemRecord>({
-          filter: stockFilter,
-        })
-        if (existingStock.length > 0) {
-          await pb.collection('stock_items').update(existingStock[0].id, {
-            quantity: existingStock[0].quantity + item.quantity,
-          })
-        }
-        await pb.collection('stock_movements').create({
-          store: sale.store,
-          product: item.product,
-          variant: item.variant || null,
-          type: 'devolucao',
-          quantity: item.quantity,
-          date: new Date().toISOString(),
-          user: adminUserId,
-          reason: `Cancelamento de venda #${sale.number} (antes da entrega)`,
-          source_ref: saleId,
-        })
-      }
-    }
-
-    // Cancel / reverse commissions
-    const comms = await pb.collection('commissions').getFullList<CommissionRecord>({
-      filter: `sale = '${saleId}'`,
-    })
-    for (const c of comms) {
-      await pb.collection('commissions').update(c.id, {
-        status: 'estornada',
-        notes: `Estorno automático por cancelamento da venda #${sale.number}. Motivo: ${reason}`,
-      })
-    }
-
-    // Update sale record
-    const updated = await pb.collection('sales').update<SaleRecord>(saleId, {
-      status: 'cancelada',
-      cancellation_reason: reason,
-      canceled_by: adminUserId,
-      canceled_at: new Date().toISOString(),
-    })
-
-    // Register sale_returns record
-    await pb.collection('sale_returns').create({
-      sale: saleId,
-      store: sale.store,
-      type: 'cancelamento',
-      reason,
-      refund_amount: sale.total,
-      refund_status: 'sem_reembolso',
-      product_condition:
-        sale.delivery_status === 'entregue' ? 'avariado_indisponivel' : 'nao_entregue_liberado',
-      performed_by: adminUserId,
-    })
-
-    // Auditoria gravada pelo servidor (audit_sales_status.js e system_rules.js).
-    return updated
   },
 
   async registerReturn(
