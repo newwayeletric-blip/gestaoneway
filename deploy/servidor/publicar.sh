@@ -22,13 +22,16 @@ cp "$ROOT"/deploy/servidor/Dockerfile "$ROOT"/deploy/servidor/docker-compose.yml
 [ -f "$ROOT/deploy/servidor/Caddyfile" ] && cp "$ROOT/deploy/servidor/Caddyfile" "$stage/"
 
 # Hooks e migrations são trocados por inteiro: arquivo apagado no
-# repositório também sai do servidor. pb_data nunca é tocado aqui.
+# repositório também sai do servidor. Só o conteúdo das pastas é apagado:
+# o contêiner monta as próprias pastas, e uma pasta recriada ficaria fora
+# dele. pb_data nunca é tocado aqui.
 tar -C "$stage" -cf - . | "${SSH[@]}" "
   set -e
-  mkdir -p $DEST/pb_data
-  rm -rf $DEST/pb_hooks $DEST/pb_migrations
-  tar -C $DEST -xf -
+  mkdir -p $DEST/pb_data $DEST/pb_hooks $DEST/pb_migrations
+  find $DEST/pb_hooks $DEST/pb_migrations -mindepth 1 -delete
+  tar -C $DEST --no-same-owner -xf -
+  chown root:root $DEST
   chown -R 10001:10001 $DEST/pb_data
-  cd $DEST && docker compose up -d --build
+  cd $DEST && docker compose up -d --build && docker compose restart pocketbase
 "
 "${SSH[@]}" "cd $DEST && docker compose ps && docker compose logs --tail=20 pocketbase"

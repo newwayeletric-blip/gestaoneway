@@ -81,15 +81,19 @@ describe('Cenário 1 — criar usuário sem login', () => {
   test('setup sem token ou com token errado é negado', async () => {
     const body = { name: 'Admin', email: 'admin@teste.dev', password: PASSWORD, passwordConfirm: PASSWORD }
     assert.equal((await api('POST', '/backend/v1/setup', { body })).status, 403)
-    assert.equal(
-      (await api('POST', '/backend/v1/setup', { body: { ...body, token: 'errado' } })).status,
-      403,
-    )
+    for (const token of ['errado', ' \n ', 'SETUP_TOKEN=', SETUP_TOKEN.slice(0, -1)]) {
+      assert.equal(
+        (await api('POST', '/backend/v1/setup', { body: { ...body, token } })).status,
+        403,
+        `token ${JSON.stringify(token)}`,
+      )
+    }
   })
 
   test('setup com token cria o primeiro admin e depois se autodesativa', async () => {
     const body = {
-      token: SETUP_TOKEN,
+      // Colado do terminal: com o nome da variável e a linha quebrada no meio.
+      token: `SETUP_TOKEN=${SETUP_TOKEN.slice(0, 20)}\r\n${SETUP_TOKEN.slice(20)} `,
       name: 'Admin Teste',
       email: 'admin@teste.dev',
       password: PASSWORD,

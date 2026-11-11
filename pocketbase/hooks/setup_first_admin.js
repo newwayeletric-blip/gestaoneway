@@ -26,8 +26,14 @@ routerAdd('POST', '/backend/v1/setup', (e) => {
   }
 
   const body = e.requestInfo().body || {}
-  const token = String(body.token || '')
-  if ($security.sha256(token) !== $security.sha256(expected)) {
+  // O token chega colado do terminal: às vezes com a linha quebrada no meio
+  // pela janela, com espaços ou com o "SETUP_TOKEN=" junto.
+  const clean = (v) =>
+    String(v || '')
+      .replace(/\s+/g, '')
+      .replace(/^SETUP_TOKEN=/i, '')
+  const token = clean(body.token)
+  if ($security.sha256(token) !== $security.sha256(clean(expected))) {
     throw new ForbiddenError('Token de instalação inválido.')
   }
 
