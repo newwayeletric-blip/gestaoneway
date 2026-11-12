@@ -652,9 +652,165 @@ function discover(app, rec) {
   return { source: source, channels: channels, deposits: deposits }
 }
 
+// Anúncios (GET/POST /anuncios): o Bling só os gerencia pela API no Mercado Livre.
+const LISTING_STATUS = { 1: 'publicado', 2: 'rascunho', 3: 'problema', 4: 'pausado' }
+function integrationOf(channel) {
+  if (channel.getString('kind') !== 'mercado_livre') {
+    throw new Error(
+      'o Bling só deixa ver e mexer nos anúncios do Mercado Livre pelo sistema; os da Amazon ficam nas telas do Bling',
+    )
+  }
+  return (
+    '?tipoIntegracao=MercadoLivre&idLoja=' + encodeURIComponent(channel.getString('bling_store_id'))
+  )
+}
+
+function productForBlingId(app, orgId, blingId) {
+  if (!blingId || blingId === '0') return ''
+  const links = app.findRecordsByFilter(
+    'bling_product_links',
+    'org = {:org} && bling_product_id = {:id}',
+    '',
+    1,
+    0,
+    { org: orgId, id: blingId },
+  )
+  return links.length > 0 ? links[0].getString('product') : ''
+}
+
+// Relê os anúncios do canal nas 4 situações; o que sumiu do Bling sai daqui.
+function refreshListings(app, rec, channel) {
+  const orgId = channel.getString('org')
+  const query = integrationOf(channel)
+  const now = Date.now()
+  let count = 0
+  for (const situation of [1, 2, 3, 4]) {
+    for (let page = 1; page <= 20; page++) {
+      pace()
+      const items = get(
+        app,
+        rec,
+        '/anuncios' + query + '&situacao=' + situation + '&pagina=' + page + '&limite=100',
+      )
+      for (const a of items) {
+        const id = text(a.id)
+        if (!id) continue
+        const found = app.findRecordsByFilter(
+          'marketplace_listings',
+          'org = {:org} && channel = {:ch} && bling_listing_id = {:id}',
+          '',
+          1,
+          0,
+          { org: orgId, ch: channel.id, id: id },
+        )
+        const l =
+          found.length > 0
+            ? found[0]
+            : new Record(app.findCollectionByNameOrId('marketplace_listings'))
+        l.set('org', orgId)
+        l.set('channel', channel.id)
+        l.set('bling_listing_id', id)
+        l.set('listing_code', text(a.anuncioLoja && a.anuncioLoja.id))
+        l.set('title', text(a.titulo))
+        l.set('status', LISTING_STATUS[situation])
+        const price = a.preco
+        if (price !== undefined && price !== null) {
+          l.set('price', typeof price === 'object' ? Number(price.valor) || 0 : Number(price) || 0)
+          if (typeof price === 'object') l.set('promo_price', Number(price.promocional) || 0)
+        }
+        // O produto do Bling só vem no detalhe do anúncio: lê uma vez.
+        if (!l.getString('bling_product_id')) {
+          try {
+            pace()
+            const d = get(app, rec, '/anuncios/' + id + query)
+            l.set('bling_product_id', text(d.produto && d.produto.id))
+            if (d.preco && typeof d.preco === 'object') {
+              l.set('price', Number(d.preco.valor) || l.getFloat('price'))
+              l.set('promo_price', Number(d.preco.promocional) || 0)
+            }
+          } catch (_) {}
+        }
+        l.set('product', productForBlingId(app, orgId, l.getString('bling_product_id')))
+        l.set('refreshed_at', now)
+        app.save(l)
+        count++
+      }
+      if (items.length < 100) break
+    }
+  }
+  for (const old of app.findRecordsByFilter(
+    'marketplace_listings',
+    'org = {:org} && channel = {:ch} && refreshed_at < {:now}',
+    '',
+    0,
+    0,
+    { org: orgId, ch: channel.id, now: now },
+  )) {
+    app.delete(old)
+  }
+  return { count: count }
+}
+
+// Pausa ou publica o anúncio no marketplace pelo Bling.
+function listingAction(app, rec, channel, listing, action) {
+  const path = action === 'pausar' ? 'pausar' : 'publicar'
+  const res = bling.call(
+    app,
+    rec,
+    'POST',
+    '/anuncios/' + listing.getString('bling_listing_id') + '/' + path + integrationOf(channel),
+  )
+  if (res.statusCode >= 300) {
+    throw new Error(
+      'o Bling não ' +
+        (path === 'pausar' ? 'pausou' : 'publicou') +
+        ' o anúncio (' +
+        bling.describe(res) +
+        ')',
+    )
+  }
+  listing.set('status', path === 'pausar' ? 'pausado' : 'publicado')
+  app.save(listing)
+}
+
+// Confere, uma a uma, as permissões que os marketplaces usam no Bling.
+function checkPermissions(app, rec, channel) {
+  const checks = [
+    [
+      'Pedidos de venda',
+      '/pedidos/vendas?limite=1&idLoja=' + encodeURIComponent(channel.getString('bling_store_id')),
+    ],
+    ['Canais de venda', '/canais-venda'],
+    ['Depósitos', '/depositos'],
+    ['Estoques', '/estoques/saldos?idsProdutos[]=1'],
+  ]
+  if (channel.getString('kind') === 'mercado_livre') {
+    checks.push(['Anúncios', '/anuncios' + integrationOf(channel) + '&limite=1'])
+  }
+  const out = []
+  for (const [name, path] of checks) {
+    pace()
+    const res = bling.call(app, rec, 'GET', path)
+    out.push({
+      name: name,
+      ok: res.statusCode === 200,
+      detail:
+        res.statusCode === 200
+          ? ''
+          : res.statusCode === 403
+            ? 'sem permissão'
+            : bling.describe(res),
+    })
+  }
+  return out
+}
+
 module.exports = {
   CANCELED: CANCELED,
   discover: discover,
+  refreshListings: refreshListings,
+  listingAction: listingAction,
+  checkPermissions: checkPermissions,
   get: get,
   audit: audit,
   link: link,

@@ -282,6 +282,19 @@ export interface ChannelStockRow {
   bling_qty: number
   last_pushed: number
 }
+export interface MarketplaceListing {
+  id: string
+  listing_code: string
+  title: string
+  status: 'publicado' | 'rascunho' | 'problema' | 'pausado'
+  price: number
+  promo_price: number
+  product: string
+  product_name: string
+  sku: string
+  stock: number | null
+  refreshed_at: number
+}
 export interface ImportSummary {
   imported: number
   waiting: number
@@ -357,6 +370,39 @@ export const MarketplaceService = {
 
   async pushStock(channelId: string): Promise<{ sent: number; failures: string[] }> {
     return await pb.send(`/backend/v1/marketplaces/channels/${channelId}/stock`, {
+      method: 'POST',
+    })
+  },
+
+  // Confere no Bling cada permissão que os marketplaces usam.
+  async check(channelId: string): Promise<{ name: string; ok: boolean; detail: string }[]> {
+    const res = await pb.send<{ items: { name: string; ok: boolean; detail: string }[] }>(
+      `/backend/v1/marketplaces/channels/${channelId}/check`,
+      { method: 'GET' },
+    )
+    return res.items
+  },
+
+  // Anúncios guardados do canal (só Mercado Livre pela API do Bling).
+  async listings(channelId: string): Promise<MarketplaceListing[]> {
+    const res = await pb.send<{ items: MarketplaceListing[] }>(
+      `/backend/v1/marketplaces/channels/${channelId}/listings`,
+      { method: 'GET' },
+    )
+    return res.items
+  },
+
+  async refreshListings(channelId: string): Promise<{ count: number }> {
+    return await pb.send(`/backend/v1/marketplaces/channels/${channelId}/listings`, {
+      method: 'POST',
+    })
+  },
+
+  async listingAction(
+    listingId: string,
+    action: 'pausar' | 'publicar',
+  ): Promise<{ status: MarketplaceListing['status'] }> {
+    return await pb.send(`/backend/v1/marketplaces/listings/${listingId}/${action}`, {
       method: 'POST',
     })
   },

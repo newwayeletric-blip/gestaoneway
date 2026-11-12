@@ -40,7 +40,20 @@ const order = (id, numeroLoja, items, extra = {}) => ({
 })
 
 function startFakeBling() {
-  const b = { orders: new Map(), stock: new Map(), pushes: [], valid: new Set(), listCalls: [] }
+  const b = {
+    orders: new Map(),
+    stock: new Map(),
+    pushes: [],
+    valid: new Set(),
+    listCalls: [],
+    // Anúncios do Mercado Livre: id → { titulo, situacao (1 publicado..4 pausado), mlb, produto, preco }
+    listings: new Map([
+      [501, { titulo: 'Bicicleta Elétrica Navee WDB04 1000W', situacao: 1, mlb: 'MLB5011', produto: 16666906267, preco: 8458 }],
+      [502, { titulo: 'Capacete Urbano', situacao: 4, mlb: 'MLB5022', produto: 555, preco: 129.9 }],
+      [503, { titulo: 'Patinete sem vínculo', situacao: 2, mlb: 'MLB5033', produto: 999, preco: 1999 }],
+    ]),
+    listingCalls: [],
+  }
   const send = (res, status, json) => {
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(json))
@@ -68,6 +81,27 @@ function startFakeBling() {
     }
     const m = p.match(/^\/api\/pedidos\/vendas\/(\d+)$/)
     if (m && b.orders.has(Number(m[1]))) return send(res, 200, { data: b.orders.get(Number(m[1])) })
+    if (p === '/api/anuncios') {
+      b.listingCalls.push(Object.fromEntries(url.searchParams))
+      if (url.searchParams.get('tipoIntegracao') !== 'MercadoLivre' || url.searchParams.get('idLoja') !== String(ML)) {
+        return send(res, 400, { error: { message: 'Integração inválida' } })
+      }
+      const sit = Number(url.searchParams.get('situacao') || 1)
+      const data = [...b.listings.entries()]
+        .filter(([, l]) => l.situacao === sit)
+        .map(([id, l]) => ({ id, titulo: l.titulo, situacao: l.situacao, anuncioLoja: { id: l.mlb }, preco: l.preco }))
+      return send(res, 200, { data })
+    }
+    const an = p.match(/^\/api\/anuncios\/(\d+)(\/(pausar|publicar))?$/)
+    if (an && b.listings.has(Number(an[1]))) {
+      const l = b.listings.get(Number(an[1]))
+      b.listingCalls.push({ path: p, method: req.method, ...Object.fromEntries(url.searchParams) })
+      if (an[3]) {
+        l.situacao = an[3] === 'pausar' ? 4 : 1
+        return send(res, 200, { data: {} })
+      }
+      return send(res, 200, { data: { id: Number(an[1]), produto: { id: l.produto }, preco: { valor: l.preco, promocional: 0 } } })
+    }
     if (p === '/api/estoques/saldos') {
       const ids = url.searchParams.getAll('idsProdutos[]').map(Number)
       return send(res, 200, {
@@ -310,4 +344,75 @@ test('estoque para o Bling: só quando ligado, como balanço, e só o que mudou'
   const cmp2 = await req('GET', `/backend/v1/marketplaces/channels/${ctx.channel}/stock`)
   assert.equal(cmp2.json.items.find((i) => i.bling_product_id === '16666906267').system_qty, 5)
   assert.equal(fake.pushes.length, before)
+})
+
+test('permissões do Bling conferidas uma a uma, com registro na auditoria', async () => {
+  const res = await req('GET', `/backend/v1/marketplaces/channels/${ctx.channel}/check`)
+  assert.equal(res.status, 200, res.text)
+  assert.deepEqual(
+    res.json.items.map((c) => [c.name, c.ok]),
+    [
+      ['Pedidos de venda', true],
+      ['Canais de venda', true],
+      ['Depósitos', true],
+      ['Estoques', true],
+      ['Anúncios', true],
+    ],
+  )
+  const logs = await list('audit_logs', "entity = 'sales_channels'")
+  assert.ok(logs.some((l) => /^Permissões do Bling conferidas: Pedidos de venda ok/.test(l.reason)))
+  assert.equal((await req('GET', `/backend/v1/marketplaces/channels/${ctx.channel}/check`, undefined, ctx.seller)).status, 403)
+})
+
+test('painel dos anúncios: lê do Bling, liga ao produto e mostra o estoque da loja', async () => {
+  const refresh = await req('POST', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`)
+  assert.equal(refresh.status, 200, refresh.text)
+  assert.equal(refresh.json.count, 3)
+  assert.ok(fake.listingCalls.every((c) => !c.tipoIntegracao || (c.tipoIntegracao === 'MercadoLivre' && c.idLoja === String(ML))))
+  const items = (await req('GET', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`)).json.items
+  const byCode = Object.fromEntries(items.map((i) => [i.listing_code, i]))
+  assert.equal(byCode.MLB5011.status, 'publicado')
+  assert.equal(byCode.MLB5011.product, ctx.bike)
+  assert.equal(byCode.MLB5011.stock, 5)
+  assert.equal(byCode.MLB5011.price, 8458)
+  assert.equal(byCode.MLB5022.status, 'pausado')
+  assert.equal(byCode.MLB5022.product, ctx.helmet)
+  assert.equal(byCode.MLB5033.status, 'rascunho')
+  assert.equal(byCode.MLB5033.product, '')
+  assert.equal(byCode.MLB5033.stock, null)
+  ctx.listing = byCode.MLB5011.id
+})
+
+test('pausar e publicar passam pelo Bling; apagado no Bling sai do painel', async () => {
+  const pause = await req('POST', `/backend/v1/marketplaces/listings/${ctx.listing}/pausar`)
+  assert.equal(pause.status, 200, pause.text)
+  assert.equal(pause.json.status, 'pausado')
+  const call = fake.listingCalls.find((c) => c.path === '/api/anuncios/501/pausar')
+  assert.equal(call.method, 'POST')
+  assert.equal(call.tipoIntegracao, 'MercadoLivre')
+  assert.equal(call.idLoja, String(ML))
+  assert.equal(fake.listings.get(501).situacao, 4)
+  assert.equal((await req('POST', `/backend/v1/marketplaces/listings/${ctx.listing}/publicar`)).json.status, 'publicado')
+  assert.equal((await req('POST', `/backend/v1/marketplaces/listings/${ctx.listing}/apagar`)).status, 404)
+  assert.equal((await req('POST', `/backend/v1/marketplaces/listings/${ctx.listing}/pausar`, undefined, ctx.seller)).status, 403)
+  const logs = await list('audit_logs', "entity = 'marketplace_listings'")
+  assert.deepEqual(logs.map((l) => l.reason).sort(), [
+    'Anúncio MLB5011 pausado (Bicicleta Elétrica Navee WDB04 1000W)',
+    'Anúncio MLB5011 publicado (Bicicleta Elétrica Navee WDB04 1000W)',
+  ])
+
+  fake.listings.delete(503)
+  ok(await req('POST', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`), 'reler')
+  const codes = (await req('GET', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`)).json.items.map((i) => i.listing_code)
+  assert.deepEqual(codes.sort(), ['MLB5011', 'MLB5022'])
+})
+
+test('canal da Amazon: anúncios só pelas telas do Bling', async () => {
+  const amazon = await req('POST', '/backend/v1/marketplaces/channels', {
+    bling_store_id: '777000', name: 'Amazon', kind: 'amazon', import_from: '2026-11-01', active: false,
+  })
+  ok(amazon, 'canal amazon')
+  const res = await req('POST', `/backend/v1/marketplaces/channels/${amazon.json.id}/listings`)
+  assert.equal(res.status, 400)
+  assert.match(res.json.message, /só deixa ver e mexer nos anúncios do Mercado Livre/)
 })

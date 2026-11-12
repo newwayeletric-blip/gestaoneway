@@ -3,12 +3,18 @@ import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowUpFromLine,
+  CheckCircle2,
   Download,
+  ExternalLink,
   Link2,
+  Pause,
+  Play,
   Plus,
   RefreshCw,
   Settings2,
+  ShieldCheck,
   Store as StoreIcon,
+  XCircle,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -16,6 +22,7 @@ import {
   ProductsService,
   type ChannelKind,
   type ChannelStockRow,
+  type MarketplaceListing,
   type MarketplaceOrder,
   type SalesChannel,
 } from '@/services/api'
@@ -104,6 +111,12 @@ export default function Marketplaces() {
   const [linkChoice, setLinkChoice] = useState<Record<string, string>>({})
   const [stockChannel, setStockChannel] = useState('')
   const [stockRows, setStockRows] = useState<ChannelStockRow[] | null>(null)
+  const [checks, setChecks] = useState<
+    Record<string, { name: string; ok: boolean; detail: string }[]>
+  >({})
+  const [listingChannel, setListingChannel] = useState('')
+  const [listings, setListings] = useState<MarketplaceListing[] | null>(null)
+  const [listingFilter, setListingFilter] = useState('')
 
   const storeName = (id: string) => stores.find((s) => s.id === id)?.name || '—'
   const channelName = (id: string) => channels.find((c) => c.id === id)?.name || '—'
@@ -244,6 +257,47 @@ export default function Marketplaces() {
       await load()
     })
 
+  const checkChannel = (c: SalesChannel) =>
+    run('check-' + c.id, async () => {
+      const items = await MarketplaceService.check(c.id)
+      setChecks((prev) => ({ ...prev, [c.id]: items }))
+    })
+
+  // Anúncios: o Bling só mostra e mexe nos do Mercado Livre pela API.
+  const listingChannels = channels.filter((c) => c.kind === 'mercado_livre')
+  const currentListingChannel = listingChannel || listingChannels[0]?.id || ''
+  const loadListings = (channelId: string) =>
+    MarketplaceService.listings(channelId)
+      .then(setListings)
+      .catch(() => setListings([]))
+  useEffect(() => {
+    if (currentListingChannel) loadListings(currentListingChannel)
+  }, [currentListingChannel])
+
+  const refreshListings = () =>
+    run('listings', async () => {
+      const res = await MarketplaceService.refreshListings(currentListingChannel)
+      toast({ title: `${res.count} anúncio(s) lido(s) do Bling` })
+      await loadListings(currentListingChannel)
+    })
+
+  const toggleListing = (l: MarketplaceListing) => {
+    const action = l.status === 'publicado' ? 'pausar' : 'publicar'
+    if (
+      !window.confirm(
+        action === 'pausar'
+          ? `Pausar o anúncio "${l.title}" no Mercado Livre? Ele para de vender até publicar de novo.`
+          : `Publicar o anúncio "${l.title}" no Mercado Livre?`,
+      )
+    )
+      return
+    run('listing-' + l.id, async () => {
+      await MarketplaceService.listingAction(l.id, action)
+      toast({ title: action === 'pausar' ? 'Anúncio pausado' : 'Anúncio publicado' })
+      await loadListings(currentListingChannel)
+    })
+  }
+
   const waiting = useMemo(() => orders.filter((o) => o.status === 'aguardando_vinculo'), [orders])
   const configuredIds = new Set(channels.map((c) => c.bling_store_id))
   const selectedChannel = channels.find((c) => c.id === stockChannel)
@@ -341,6 +395,7 @@ export default function Marketplaces() {
           <TabsTrigger value="canais">Canais</TabsTrigger>
           <TabsTrigger value="pedidos">Pedidos</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
+          <TabsTrigger value="anuncios">Anúncios</TabsTrigger>
         </TabsList>
 
         <TabsContent value="canais" className="space-y-4">
@@ -380,6 +435,24 @@ export default function Marketplaces() {
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {c.last_error}
                     </p>
                   )}
+                  {checks[c.id] && (
+                    <ul className="mt-2 space-y-0.5">
+                      {checks[c.id].map((k) => (
+                        <li
+                          key={k.name}
+                          className={`flex items-center gap-1.5 ${k.ok ? 'text-emerald-700' : 'text-red-700'}`}
+                        >
+                          {k.ok ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <XCircle className="h-4 w-4" />
+                          )}
+                          {k.name}
+                          {k.ok ? '' : `: ${k.detail}`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Button
@@ -393,6 +466,15 @@ export default function Marketplaces() {
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => editChannel(c)}>
                     <Settings2 className="mr-1.5 h-4 w-4" /> Configurar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => checkChannel(c)}
+                    disabled={!!busy}
+                  >
+                    <ShieldCheck className="mr-1.5 h-4 w-4" />
+                    {busy === 'check-' + c.id ? 'Conferindo...' : 'Conferir permissões do Bling'}
                   </Button>
                 </div>
               </CardContent>
@@ -525,6 +607,169 @@ export default function Marketplaces() {
               </tbody>
             </table>
           </div>
+        </TabsContent>
+
+        <TabsContent value="anuncios" className="space-y-3">
+          <Card className="border-0 bg-white shadow-sm">
+            <CardContent className="space-y-3 pt-5 text-sm">
+              {listingChannels.length === 0 ? (
+                <p className="text-gray-500">
+                  Configure o canal do Mercado Livre para ver os anúncios. Os anúncios da Amazon
+                  ficam nas telas do Bling (o Bling não deixa mexer neles pelo sistema).
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-end gap-2">
+                    {listingChannels.length > 1 && (
+                      <select
+                        aria-label="Canal dos anúncios"
+                        value={currentListingChannel}
+                        onChange={(e) => setListingChannel(e.target.value)}
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {listingChannels.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <select
+                      aria-label="Situação dos anúncios"
+                      value={listingFilter}
+                      onChange={(e) => setListingFilter(e.target.value)}
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Todos os anúncios</option>
+                      <option value="publicado">Publicados</option>
+                      <option value="pausado">Pausados</option>
+                      <option value="rascunho">Rascunhos</option>
+                      <option value="problema">Com problema</option>
+                    </select>
+                    <Button variant="outline" onClick={refreshListings} disabled={!!busy}>
+                      <RefreshCw className="mr-1.5 h-4 w-4" />
+                      {busy === 'listings' ? 'Lendo o Bling...' : 'Atualizar anúncios do Bling'}
+                    </Button>
+                  </div>
+                  {listings && listings.length > 0 && (
+                    <p className="text-xs text-gray-500">
+                      Última leitura: {when(Math.max(...listings.map((l) => l.refreshed_at)))}
+                    </p>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="border-b text-left text-xs uppercase text-gray-500">
+                        <tr>
+                          <th className="py-2 pr-3">Anúncio</th>
+                          <th className="py-2 pr-3 text-right">Preço</th>
+                          <th className="py-2 pr-3">Situação</th>
+                          <th className="py-2 pr-3">Produto do sistema</th>
+                          <th className="py-2 pr-3" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {(listings || []).filter(
+                          (l) => !listingFilter || l.status === listingFilter,
+                        ).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center text-gray-500">
+                              {listings === null
+                                ? 'Carregando...'
+                                : 'Nenhum anúncio aqui. Clique em "Atualizar anúncios do Bling".'}
+                            </td>
+                          </tr>
+                        )}
+                        {(listings || [])
+                          .filter((l) => !listingFilter || l.status === listingFilter)
+                          .map((l) => (
+                            <tr key={l.id} className="align-top">
+                              <td className="py-2 pr-3">
+                                <p className="font-medium">{l.title}</p>
+                                {l.listing_code && (
+                                  <a
+                                    href={`https://produto.mercadolivre.com.br/MLB-${l.listing_code.replace(/^MLB-?/i, '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 font-mono text-xs text-[#0A8F5C] underline"
+                                  >
+                                    {l.listing_code} <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 text-right whitespace-nowrap">
+                                {formatBRL(l.price)}
+                                {l.promo_price > 0 && (
+                                  <p className="text-xs text-emerald-700">
+                                    promoção {formatBRL(l.promo_price)}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="py-2 pr-3">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    l.status === 'publicado'
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                      : l.status === 'problema'
+                                        ? 'border-red-200 bg-red-50 text-red-700'
+                                        : 'border-gray-200 bg-gray-50 text-gray-700'
+                                  }
+                                >
+                                  {
+                                    {
+                                      publicado: 'Publicado',
+                                      pausado: 'Pausado',
+                                      rascunho: 'Rascunho',
+                                      problema: 'Com problema',
+                                    }[l.status]
+                                  }
+                                </Badge>
+                              </td>
+                              <td className="py-2 pr-3">
+                                {l.product ? (
+                                  <>
+                                    <p>{l.product_name}</p>
+                                    <p
+                                      className={`text-xs ${l.stock === 0 ? 'font-semibold text-red-700' : 'text-gray-500'}`}
+                                    >
+                                      {l.sku} · {l.stock ?? 0} na loja
+                                    </p>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-gray-500">
+                                    sem vínculo (liga quando entrar um pedido dele)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 text-right">
+                                {(l.status === 'publicado' || l.status === 'pausado') && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => toggleListing(l)}
+                                    disabled={!!busy}
+                                  >
+                                    {l.status === 'publicado' ? (
+                                      <>
+                                        <Pause className="mr-1 h-3.5 w-3.5" /> Pausar
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Play className="mr-1 h-3.5 w-3.5" /> Publicar
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="estoque" className="space-y-3">

@@ -9,6 +9,10 @@
  * - POST /backend/v1/marketplaces/links         vincula produto do Bling ↔ sistema
  * - GET  /backend/v1/marketplaces/channels/{id}/stock   sistema × Bling
  * - POST /backend/v1/marketplaces/channels/{id}/stock   manda o estoque agora
+ * - GET  /backend/v1/marketplaces/channels/{id}/check   permissões do Bling
+ * - GET  /backend/v1/marketplaces/channels/{id}/listings  anúncios guardados
+ * - POST /backend/v1/marketplaces/channels/{id}/listings  relê os anúncios
+ * - POST /backend/v1/marketplaces/listings/{id}/{acao}    pausar | publicar
  * - cron marketplace_sync (a cada 5 minutos): pedidos de todo canal ativo e o
  *   estoque de quem ligou a sincronização.
  */
@@ -359,6 +363,182 @@ routerAdd('POST', '/backend/v1/marketplaces/channels/{id}/stock', (e) => {
   } catch (err) {
     throw new BadRequestError('O estoque não foi: ' + String(err.message || err))
   }
+})
+
+routerAdd('GET', '/backend/v1/marketplaces/channels/{id}/check', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+  }
+  let channel = null
+  try {
+    channel = $app.findRecordById('sales_channels', e.request.pathValue('id'))
+  } catch (_) {}
+  if (!channel || channel.getString('org') !== auth.getString('org')) {
+    throw new NotFoundError('Canal não encontrado.')
+  }
+  const bling = require(`${__hooks}/lib/bling.js`)
+  const mk = require(`${__hooks}/lib/marketplace.js`)
+  const rec = bling.find($app, auth.getString('org'))
+  if (!rec || !rec.getString('refresh_token'))
+    throw new BadRequestError('O Bling não está conectado.')
+  try {
+    const checks = mk.checkPermissions($app, rec, channel)
+    mk.audit(
+      $app,
+      auth.getString('org'),
+      'sales_channels',
+      channel.id,
+      auth.id,
+      'Permissões do Bling conferidas: ' +
+        checks.map((c) => c.name + (c.ok ? ' ok' : ' (' + c.detail + ')')).join(', '),
+    )
+    return e.json(200, { items: checks })
+  } catch (err) {
+    throw new BadRequestError('Não consegui conferir: ' + String(err.message || err))
+  }
+})
+
+routerAdd('GET', '/backend/v1/marketplaces/channels/{id}/listings', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+  }
+  let channel = null
+  try {
+    channel = $app.findRecordById('sales_channels', e.request.pathValue('id'))
+  } catch (_) {}
+  if (!channel || channel.getString('org') !== auth.getString('org')) {
+    throw new NotFoundError('Canal não encontrado.')
+  }
+  const items = []
+  for (const l of $app.findRecordsByFilter(
+    'marketplace_listings',
+    'channel = {:ch}',
+    'status,title',
+    0,
+    0,
+    { ch: channel.id },
+  )) {
+    let product = null
+    try {
+      if (l.getString('product')) product = $app.findRecordById('products', l.getString('product'))
+    } catch (_) {}
+    let stock = null
+    if (product && channel.getString('stock_store')) {
+      stock = 0
+      for (const row of $app.findRecordsByFilter(
+        'stock_items',
+        'store = {:store} && product = {:product}',
+        '',
+        0,
+        0,
+        { store: channel.getString('stock_store'), product: product.id },
+      )) {
+        stock += row.getFloat('quantity')
+      }
+    }
+    items.push({
+      id: l.id,
+      listing_code: l.getString('listing_code'),
+      title: l.getString('title'),
+      status: l.getString('status'),
+      price: l.getFloat('price'),
+      promo_price: l.getFloat('promo_price'),
+      product: product ? product.id : '',
+      product_name: product ? product.getString('name') : '',
+      sku: product ? product.getString('sku') : '',
+      stock: stock,
+      refreshed_at: l.getFloat('refreshed_at'),
+    })
+  }
+  return e.json(200, { items: items })
+})
+
+routerAdd('POST', '/backend/v1/marketplaces/channels/{id}/listings', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+  }
+  let channel = null
+  try {
+    channel = $app.findRecordById('sales_channels', e.request.pathValue('id'))
+  } catch (_) {}
+  if (!channel || channel.getString('org') !== auth.getString('org')) {
+    throw new NotFoundError('Canal não encontrado.')
+  }
+  const bling = require(`${__hooks}/lib/bling.js`)
+  const mk = require(`${__hooks}/lib/marketplace.js`)
+  const rec = bling.find($app, auth.getString('org'))
+  if (!rec || !rec.getString('refresh_token'))
+    throw new BadRequestError('O Bling não está conectado.')
+  try {
+    return e.json(200, mk.refreshListings($app, rec, channel))
+  } catch (err) {
+    throw new BadRequestError('Os anúncios não vieram: ' + String(err.message || err))
+  }
+})
+
+routerAdd('POST', '/backend/v1/marketplaces/listings/{id}/{action}', (e) => {
+  const auth = e.auth
+  if (
+    !auth ||
+    auth.collection().name !== 'users' ||
+    auth.getString('status') !== 'ativo' ||
+    auth.getString('profile') !== 'admin'
+  ) {
+    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+  }
+  const action = e.request.pathValue('action')
+  if (['pausar', 'publicar'].indexOf(action) === -1) throw new NotFoundError('Ação desconhecida.')
+  let listing = null
+  try {
+    listing = $app.findRecordById('marketplace_listings', e.request.pathValue('id'))
+  } catch (_) {}
+  if (!listing || listing.getString('org') !== auth.getString('org')) {
+    throw new NotFoundError('Anúncio não encontrado.')
+  }
+  const channel = $app.findRecordById('sales_channels', listing.getString('channel'))
+  const bling = require(`${__hooks}/lib/bling.js`)
+  const mk = require(`${__hooks}/lib/marketplace.js`)
+  const rec = bling.find($app, auth.getString('org'))
+  if (!rec || !rec.getString('refresh_token'))
+    throw new BadRequestError('O Bling não está conectado.')
+  try {
+    mk.listingAction($app, rec, channel, listing, action)
+  } catch (err) {
+    const msg = String(err.message || err)
+    throw new BadRequestError(msg.charAt(0).toUpperCase() + msg.slice(1) + '.')
+  }
+  mk.audit(
+    $app,
+    auth.getString('org'),
+    'marketplace_listings',
+    listing.id,
+    auth.id,
+    'Anúncio ' +
+      listing.getString('listing_code') +
+      (action === 'pausar' ? ' pausado' : ' publicado') +
+      ' (' +
+      listing.getString('title') +
+      ')',
+  )
+  return e.json(200, { status: listing.getString('status') })
 })
 
 cronAdd('marketplace_sync', '*/5 * * * *', () => {
