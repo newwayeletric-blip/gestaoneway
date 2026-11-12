@@ -13,8 +13,9 @@
  * - GET  /backend/v1/marketplaces/channels/{id}/listings  anúncios guardados
  * - POST /backend/v1/marketplaces/channels/{id}/listings  relê os anúncios
  * - POST /backend/v1/marketplaces/listings/{id}/{acao}    pausar | publicar
- * - cron marketplace_sync (a cada 5 minutos): pedidos de todo canal ativo e o
- *   estoque de quem ligou a sincronização.
+ * - cron marketplace_sync (a cada 5 minutos): canal novo no Bling entra
+ *   sozinho (lib: autoDiscover), pedidos de todo canal ativo e o estoque de
+ *   quem ligou a sincronização.
  */
 routerAdd('GET', '/backend/v1/marketplaces', (e) => {
   const auth = e.auth
@@ -195,7 +196,18 @@ routerAdd('POST', '/backend/v1/marketplaces/channels/{id}/import', (e) => {
   if (!rec || !rec.getString('refresh_token'))
     throw new BadRequestError('O Bling não está conectado.')
   try {
-    return e.json(200, mk.importChannel($app, rec, channel))
+    const summary = mk.importChannel($app, rec, channel)
+    // Canal novo no Bling (ex.: a Amazon) entra junto, já com os pedidos.
+    summary.new_channels = []
+    try {
+      for (const created of mk.autoDiscover($app, rec, auth.getString('org'))) {
+        summary.new_channels.push(created.getString('name'))
+        const extra = mk.importChannel($app, rec, created)
+        summary.imported += extra.imported
+        summary.waiting += extra.waiting
+      }
+    } catch (_) {}
+    return e.json(200, summary)
   } catch (err) {
     const fresh = $app.findRecordById('sales_channels', channel.id)
     fresh.set('last_error', String(err.message || err).slice(0, 400))
@@ -544,18 +556,14 @@ routerAdd('POST', '/backend/v1/marketplaces/listings/{id}/{action}', (e) => {
 cronAdd('marketplace_sync', '*/5 * * * *', () => {
   const bling = require(`${__hooks}/lib/bling.js`)
   const mk = require(`${__hooks}/lib/marketplace.js`)
+  const orgs = {}
   for (const channel of $app.findRecordsByFilter('sales_channels', 'active = true', '', 0, 0)) {
-    const rec = bling.find($app, channel.getString('org'))
+    orgs[channel.getString('org')] = true
+  }
+  for (const orgId in orgs) {
+    const rec = bling.find($app, orgId)
     if (!rec || !rec.getString('refresh_token')) continue
-    try {
-      mk.importChannel($app, rec, channel)
-      if (channel.getBool('sync_stock')) mk.pushStock($app, rec, channel, false)
-    } catch (err) {
-      try {
-        const fresh = $app.findRecordById('sales_channels', channel.id)
-        fresh.set('last_error', String(err.message || err).slice(0, 400))
-        $app.save(fresh)
-      } catch (_) {}
-    }
+    for (const err of mk.syncOrg($app, rec, orgId))
+      console.log('marketplace_sync ' + orgId + ': ' + err)
   }
 })

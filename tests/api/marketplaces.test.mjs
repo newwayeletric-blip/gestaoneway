@@ -6,7 +6,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { SETUP_TOKEN, client, startPocketBase } from './harness.mjs'
+import { SETUP_TOKEN, client, runPocketBase, startPocketBase } from './harness.mjs'
 
 const PASSWORD = 'SenhaForte!2026'
 const ML = 206201560
@@ -34,6 +34,7 @@ const order = (id, numeroLoja, items, extra = {}) => ({
   })),
   total: items.reduce((t, [, , v, q, d]) => t + v * q * (1 - (d || 0) / 100), 0),
   taxas: { custoFrete: 106.85, taxaComissao: 1395.57, valorBase: 8458 },
+  intermediador: extra.intermediador || { cnpj: '03.007.331/0001-41', nomeUsuario: 'NEWWAYOFICIAL' },
   transporte: {
     etiqueta: { endereco: 'Rua São Pedro', numero: '555', complemento: 'Casa', bairro: 'São Pedro', cep: '25956280', municipio: 'Teresópolis', uf: 'RJ' },
   },
@@ -76,7 +77,7 @@ function startFakeBling() {
       const loja = url.searchParams.get('idLoja')
       const page = Number(url.searchParams.get('pagina') || 1)
       const all = [...b.orders.values()].filter((o) => !loja || String(o.loja.id) === loja)
-      const slice = all.slice((page - 1) * 100, page * 100).map(({ itens, taxas, transporte, ...summary }) => summary)
+      const slice = all.slice((page - 1) * 100, page * 100).map(({ itens, taxas, transporte, intermediador, ...summary }) => summary)
       return send(res, 200, { data: slice })
     }
     const m = p.match(/^\/api\/pedidos\/vendas\/(\d+)$/)
@@ -234,7 +235,7 @@ test('canais e depósitos vêm do Bling; o canal só liga com loja e responsáve
 
 test('o pedido do Mercado Livre vira venda confirmada na Loja de rua e baixa o estoque', async () => {
   const sum = await importNow()
-  assert.deepEqual(sum, { imported: 2, waiting: 1, canceled: 0, ignored: 1, errors: 0 })
+  assert.deepEqual(sum, { imported: 2, waiting: 1, canceled: 0, ignored: 1, errors: 0, new_channels: [] })
   assert.equal(fake.listCalls[0].idLoja, String(ML))
   assert.equal(fake.listCalls[0].dataAlteracaoInicial, '2026-11-01 00:00:00')
 
@@ -415,4 +416,62 @@ test('canal da Amazon: anúncios só pelas telas do Bling', async () => {
   const res = await req('POST', `/backend/v1/marketplaces/channels/${amazon.json.id}/listings`)
   assert.equal(res.status, 400)
   assert.match(res.json.message, /só deixa ver e mexer nos anúncios do Mercado Livre/)
+})
+
+test('canal novo no Bling entra sozinho: a Amazon pelo CNPJ do intermediador', async () => {
+  fake.orders.set(9100, order(9100, '702-1234567-1234567', [[16666906267, 'TST-051', 8458, 1]], {
+    loja: 888, data: '2026-11-12', nome: 'Cliente Amazon', doc: '111.444.777-35',
+    intermediador: { cnpj: '15.436.940/0008-71', nomeUsuario: 'NEWWAY' },
+  }))
+  fake.orders.set(9101, order(9101, 'X-1', [[555, 'TST-CAP', 100, 1]], {
+    loja: 889, data: '2026-11-12', intermediador: { cnpj: '', nomeUsuario: '' },
+  }))
+  const before = await stockOf(ctx.bike, ctx.cj)
+  const sum = await importNow()
+  assert.deepEqual(sum.new_channels.sort(), ['Amazon', 'Canal novo do Bling (889)'])
+  assert.equal(sum.imported, 2)
+
+  const all = (await req('GET', '/backend/v1/marketplaces')).json.channels
+  const amazon = all.find((c) => c.bling_store_id === '888')
+  assert.equal(amazon.kind, 'amazon')
+  assert.equal(amazon.active, true)
+  assert.equal(amazon.stock_store, ctx.cj)
+  assert.equal(amazon.seller, ctx.adminId)
+  assert.equal(amazon.import_from, '2026-11-12')
+  assert.equal(amazon.sync_stock, false)
+  assert.equal(all.find((c) => c.bling_store_id === '889').kind, 'outro')
+
+  const [sale] = await list('sales', "external_number = '702-1234567-1234567'")
+  assert.equal(sale.channel, amazon.id)
+  assert.equal(sale.status, 'confirmada')
+  assert.equal(await stockOf(ctx.bike, ctx.cj), before - 1)
+  const logs = await list('audit_logs', "entity = 'sales_channels'")
+  assert.ok(logs.some((l) => l.reason === 'Canal Amazon achado no Bling (pedido 702-1234567-1234567) e ligado como o Mercado Livre'))
+
+  // Na próxima busca não cria de novo.
+  assert.deepEqual((await importNow()).new_channels, [])
+  assert.equal((await req('GET', '/backend/v1/marketplaces')).json.channels.filter((c) => c.bling_store_id === '888').length, 1)
+})
+
+test('a rotina de 5 minutos importa os pedidos novos de todos os canais ligados', async () => {
+  fake.orders.set(9200, order(9200, '2000099999999999', [[16666906267, 'TST-051', 8458, 1]], { data: '2026-11-12' }))
+  fake.orders.set(9201, order(9201, '702-7654321-7654321', [[16666906267, 'TST-051', 8458, 1]], {
+    loja: 888, data: '2026-11-12', intermediador: { cnpj: '15.436.940/0008-71', nomeUsuario: 'NEWWAY' },
+  }))
+  await pb.stop({ keepData: true })
+  await runPocketBase(pb.dir, ['superuser', 'upsert', 'su@newway.dev', PASSWORD])
+  pb = await startPocketBase({ dir: pb.dir })
+  api = client(pb.baseUrl)
+  const su = (
+    await api('POST', '/api/collections/_superusers/auth-with-password', {
+      body: { identity: 'su@newway.dev', password: PASSWORD },
+    })
+  ).json.token
+  assert.equal((await api('POST', '/api/crons/marketplace_sync', { token: su })).status, 204)
+  let found = []
+  for (let i = 0; i < 60 && found.length < 2; i++) {
+    await new Promise((r) => setTimeout(r, 200))
+    found = await list('sales', "external_number = '2000099999999999' || external_number = '702-7654321-7654321'")
+  }
+  assert.equal(found.length, 2, 'Mercado Livre e Amazon pela rotina')
 })

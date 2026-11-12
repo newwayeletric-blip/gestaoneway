@@ -301,6 +301,8 @@ export interface ImportSummary {
   canceled: number
   ignored: number
   errors: number
+  // Canais novos achados no Bling nesta busca (ex.: Amazon).
+  new_channels?: string[]
 }
 
 export const MarketplaceService = {

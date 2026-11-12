@@ -805,9 +805,117 @@ function checkPermissions(app, rec, channel) {
   return out
 }
 
+// Marketplace pelo CNPJ do intermediador do pedido (os 8 primeiros números:
+// a Amazon usa várias filiais).
+const INTERMEDIARIES = {
+  '03007331': ['mercado_livre', 'Mercado Livre'],
+  15436940: ['amazon', 'Amazon'],
+  35635824: ['shopee', 'Shopee'],
+  47960950: ['magalu', 'Magalu'],
+}
+
+// Canal novo no Bling (dono, 12/11/2026: "faz isso você"): o pedido de uma
+// loja do Bling que o sistema não conhece cria o canal sozinho, com a loja
+// do estoque e o responsável do primeiro canal ligado, a partir do dia do
+// primeiro pedido. O estoque para o Bling fica desligado até o administrador
+// ligar. Devolve os canais criados.
+function autoDiscover(app, rec, orgId) {
+  const known = {}
+  let template = null
+  for (const c of app.findRecordsByFilter('sales_channels', 'org = {:org}', 'created', 0, 0, {
+    org: orgId,
+  })) {
+    known[c.getString('bling_store_id')] = true
+    if (!template && c.getBool('active') && c.getString('stock_store') && c.getString('seller')) {
+      template = c
+    }
+  }
+  if (!template) return []
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const found = {}
+  for (const o of get(
+    app,
+    rec,
+    '/pedidos/vendas?dataAlteracaoInicial=' +
+      encodeURIComponent(since + ' 00:00:00') +
+      '&limite=100',
+  )) {
+    const id = text(o.loja && o.loja.id)
+    if (!id || id === '0' || known[id]) continue
+    if (!found[id] || text(o.data) < found[id].date)
+      found[id] = { date: text(o.data), order: text(o.id) }
+  }
+  const created = []
+  for (const id in found) {
+    pace()
+    const full = get(app, rec, '/pedidos/vendas/' + found[id].order)
+    const root = digits(full.intermediador && full.intermediador.cnpj).slice(0, 8)
+    const kind = INTERMEDIARIES[root] || ['outro', 'Canal novo do Bling (' + id + ')']
+    const ch = new Record(app.findCollectionByNameOrId('sales_channels'))
+    ch.set('org', orgId)
+    ch.set('bling_store_id', id)
+    ch.set('name', kind[1])
+    ch.set('kind', kind[0])
+    ch.set('active', true)
+    ch.set('stock_store', template.getString('stock_store'))
+    ch.set('seller', template.getString('seller'))
+    ch.set('import_from', found[id].date || since)
+    ch.set('sync_stock', false)
+    app.save(ch)
+    audit(
+      app,
+      orgId,
+      'sales_channels',
+      ch.id,
+      template.getString('seller'),
+      'Canal ' +
+        kind[1] +
+        ' achado no Bling (pedido ' +
+        text(full.numeroLoja) +
+        ') e ligado como o ' +
+        template.getString('name'),
+    )
+    created.push(ch)
+  }
+  return created
+}
+
+// Rotina de uma organização: canais novos e pedidos de todos os ligados; o
+// estoque de quem ligou a sincronização.
+function syncOrg(app, rec, orgId) {
+  const errors = []
+  try {
+    autoDiscover(app, rec, orgId)
+  } catch (err) {
+    errors.push('canais novos: ' + String(err.message || err))
+  }
+  for (const channel of app.findRecordsByFilter(
+    'sales_channels',
+    'org = {:org} && active = true',
+    '',
+    0,
+    0,
+    { org: orgId },
+  )) {
+    try {
+      importChannel(app, rec, channel)
+      if (channel.getBool('sync_stock')) pushStock(app, rec, channel, false)
+    } catch (err) {
+      try {
+        const fresh = app.findRecordById('sales_channels', channel.id)
+        fresh.set('last_error', String(err.message || err).slice(0, 400))
+        app.save(fresh)
+      } catch (_) {}
+    }
+  }
+  return errors
+}
+
 module.exports = {
   CANCELED: CANCELED,
   discover: discover,
+  autoDiscover: autoDiscover,
+  syncOrg: syncOrg,
   refreshListings: refreshListings,
   listingAction: listingAction,
   checkPermissions: checkPermissions,

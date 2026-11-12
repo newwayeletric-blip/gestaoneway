@@ -213,6 +213,7 @@ export default function Marketplaces() {
             s.waiting ? `${s.waiting} esperando vincular produto` : '',
             s.canceled ? `${s.canceled} cancelada(s)` : '',
             s.errors ? `${s.errors} com erro` : '',
+            s.new_channels?.length ? `canal novo ligado: ${s.new_channels.join(', ')}` : '',
           ]
             .filter(Boolean)
             .join(' · ') || 'Tudo em dia.',
