@@ -1,10 +1,12 @@
-// FRQ-01: franquias da rede, para o admin da rede. Mostra só o cadastro de
-// cada franquia; vendas, clientes e financeiro ficam com o franqueado (R.2).
+// FRQ-01: franquias da rede, para o admin da rede. Mostra o cadastro de cada
+// franquia; as vendas e o desempenho ficam no Painel da rede (/rede), e
+// clientes e financeiro continuam só com o franqueado (R.2).
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { FranchiseSummary } from '@/types'
 import { NetworkService } from '@/services/api'
 import { formatDateBR, formatDocumentBR } from '@/lib/formatters'
-import { Building2, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { Building2, ChartColumn, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from './franchiseForm'
@@ -41,8 +43,12 @@ export default function Franchises() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-[#111111]">Franquias</h2>
           <p className="text-sm text-gray-500">
-            Cadastro dos franqueados da rede: empresa (CNPJ), lojas e quem administra. Vendas,
-            clientes e financeiro de cada franquia ficam só com o franqueado.
+            Cadastro dos franqueados da rede: empresa (CNPJ), lojas e quem administra. As vendas e o
+            desempenho de cada uma ficam no{' '}
+            <Link to="/rede" className="font-medium text-[#0A8F5C] hover:underline">
+              Painel da rede
+            </Link>
+            ; clientes e financeiro ficam só com o franqueado.
           </p>
         </div>
         <Button
@@ -122,14 +128,23 @@ export default function Franchises() {
                     </span>
                   ))}
                 </div>
-                <div className="flex justify-end">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    asChild
+                    size="sm"
+                    className="h-8 text-xs bg-[#0A8F5C] hover:bg-[#087A4D] text-white"
+                  >
+                    <Link to={`/rede?escopo=${f.id}`}>
+                      <ChartColumn className="mr-1.5 h-3.5 w-3.5" /> Vendas e desempenho
+                    </Link>
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setSelectedId(f.id)}
                     className="h-8 text-xs"
                   >
-                    Ver e editar
+                    Ver e editar cadastro
                   </Button>
                 </div>
               </Card>

@@ -31,6 +31,7 @@ import type {
   OrganizationRecord,
   LegalEntityRecord,
   FranchiseSummary,
+  NetworkPerformance,
   SaleStatus,
   PaymentMethod,
   UserRecord,
@@ -74,6 +75,14 @@ export const NetworkService = {
       method: 'GET',
     })
     return res.items
+  },
+
+  // Painel da rede: vendas e desempenho de cada organização no mês (AAAA-MM).
+  async performance(month?: string): Promise<NetworkPerformance> {
+    const query = month ? `?month=${encodeURIComponent(month)}` : ''
+    return await pb.send<NetworkPerformance>(`/backend/v1/network/performance${query}`, {
+      method: 'GET',
+    })
   },
 
   async createFranchise(payload: NewFranchisePayload) {

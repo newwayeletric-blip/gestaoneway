@@ -76,6 +76,75 @@ export interface FranchiseSummary {
   admins: { id: string; name: string; email: string; status: UserStatus }[]
 }
 
+// Painel da rede (PNR-01/02/03): GET /backend/v1/network/performance.
+// Só o nível "básico" do R.2: sem cliente, custo, margem ou despesas.
+export interface NetworkTotals {
+  revenue: number
+  sales: number
+  ticket: number
+  items: number
+  discounts: number
+  canceled: number
+  canceled_value: number
+  returned: number
+  rejected: number
+  pending: number // aguardando aprovação agora (não depende do mês)
+  prev_revenue: number
+  prev_sales: number
+}
+
+export interface NetworkStock {
+  units: number
+  products: number
+  value: number // pelo preço de venda
+}
+
+export interface NetworkStorePerformance {
+  id: string
+  name: string
+  code: string
+  status: string
+  last_sale_at: string
+  totals: NetworkTotals
+  stock: NetworkStock
+}
+
+export interface NetworkOrgPerformance {
+  id: string
+  name: string
+  type: 'propria' | 'franquia'
+  status: OrganizationRecord['status']
+  region: string
+  created: string
+  active_products: number
+  users: number
+  last_sale_at: string
+  totals: NetworkTotals
+  stock: NetworkStock
+  stores: NetworkStorePerformance[]
+  history: { month: string; revenue: number; sales: number }[]
+  top_products: { name: string; sku: string; quantity: number; revenue: number }[]
+  recent_sales: {
+    id: string
+    number: string
+    created: string
+    store: string
+    seller: string
+    items: number
+    total: number
+    payment: string
+    status: string
+    marketplace: boolean
+  }[]
+}
+
+export interface NetworkPerformance {
+  month: string // AAAA-MM
+  current: boolean
+  compare_until_day: number // mês corrente: compara até este dia do mês anterior
+  organizations: NetworkOrgPerformance[]
+}
+
 export interface StoreRecord {
   id: string
   name: string

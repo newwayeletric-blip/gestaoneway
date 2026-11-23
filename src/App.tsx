@@ -46,6 +46,7 @@ import CustomerDetail from '@/pages/customers/CustomerDetail'
 
 // Rede de franquias (admin da rede)
 import Franchises from '@/pages/network/Franchises'
+import NetworkDashboard from '@/pages/network/NetworkDashboard'
 
 const queryClient = new QueryClient()
 
@@ -115,6 +116,7 @@ export default function App() {
 
                     {/* NETWORK ADMIN ROUTES */}
                     <Route element={<ProtectedRoute requiredNetworkRole="admin_rede" />}>
+                      <Route path="/rede" element={<NetworkDashboard />} />
                       <Route path="/franquias" element={<Franchises />} />
                     </Route>
 

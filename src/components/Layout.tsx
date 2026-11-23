@@ -26,6 +26,7 @@ import {
   Clock,
   Hash,
   Globe,
+  ChartColumn,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -143,7 +144,10 @@ export default function Layout() {
       ? [
           {
             title: 'Rede New Way',
-            items: [{ label: 'Franquias', path: '/franquias', icon: Building2 }],
+            items: [
+              { label: 'Painel da rede', path: '/rede', icon: ChartColumn },
+              { label: 'Franquias', path: '/franquias', icon: Building2 },
+            ],
           },
           { title: organization?.name || 'Minha organização', items: menuItems },
         ]
@@ -179,6 +183,7 @@ export default function Layout() {
     if (path === '/series') return 'Consulta de Chassi'
     if (path === '/marketplaces') return 'Marketplaces (Mercado Livre e Amazon)'
     if (path === '/franquias') return 'Rede de Franquias'
+    if (path === '/rede') return 'Painel da Rede'
     if (path === '/usuarios') return 'Colaboradores & Usuários'
     if (path === '/configuracoes') return 'Configurações do Sistema'
     if (path === '/dashboard') return 'Dashboard Geral'
