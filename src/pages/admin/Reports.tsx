@@ -24,6 +24,7 @@ import type {
   FinancialTransactionRecord,
   FinancialCategoryRecord,
   MonthlyClosingRecord,
+  SaleReturnRecord,
 } from '@/types'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
 import { saleStatusClass, saleStatusLabel } from '@/lib/saleStatus'
@@ -174,6 +175,9 @@ export default function Reports() {
   const [commissionsData, setCommissionsData] = useState<CommissionRecord[]>([])
   const [transactionsData, setTransactionsData] = useState<FinancialTransactionRecord[]>([])
   const [categoriesData, setCategoriesData] = useState<FinancialCategoryRecord[]>([])
+  // DRE: itens das vendas confirmadas (custo gravado na venda) e devoluções.
+  const [dreItems, setDreItems] = useState<SaleItemRecord[]>([])
+  const [dreReturns, setDreReturns] = useState<SaleReturnRecord[]>([])
 
   // 1. Initial lookup data
   useEffect(() => {
@@ -231,9 +235,20 @@ export default function Reports() {
         setStockMovementsData(res)
       }
 
-      if (reportType === 'comissoes') {
+      if (reportType === 'comissoes' || reportType === 'demonstrativo') {
         const list = await CommissionsService.getAll()
         setCommissionsData(list)
+      }
+
+      if (reportType === 'demonstrativo') {
+        const [items, returns] = await Promise.all([
+          pb.collection('sale_items').getFullList<SaleItemRecord>({
+            filter: "sale.status = 'confirmada'",
+          }),
+          pb.collection('sale_returns').getFullList<SaleReturnRecord>(),
+        ])
+        setDreItems(items)
+        setDreReturns(returns)
       }
 
       if (
@@ -386,13 +401,44 @@ export default function Reports() {
     const discounts = filteredSales.reduce((acc, s) => acc + (s.total_discount || 0), 0)
     const netRevenue = grossRevenue - discounts
 
-    // Estornos / devoluções
-    const returnedSales = salesData.filter((s) => {
+    // Devolução parcial: a venda continua confirmada (está na receita), então o
+    // valor devolvido sai daqui. Cancelada ou devolvida por inteiro já fica fora
+    // da receita e aparece só como informação (antes era descontada de novo).
+    const saleIds = new Set(filteredSales.map((s) => s.id))
+    const refundBySale: Record<string, number> = {}
+    for (const r of dreReturns) {
+      if (saleIds.has(r.sale))
+        refundBySale[r.sale] = (refundBySale[r.sale] || 0) + (r.refund_amount || 0)
+    }
+    const returnsValue = Object.values(refundBySale).reduce((acc, v) => acc + v, 0)
+    const voidedSales = salesData.filter((s) => {
       if (!isDateBetween(s.created)) return false
       if (selectedStore !== 'all' && s.store !== selectedStore) return false
       return s.status === 'devolvida' || s.status === 'cancelada'
     })
-    const returnsValue = returnedSales.reduce((acc, s) => acc + (s.total || 0), 0)
+    const voidedValue = voidedSales.reduce((acc, s) => acc + (s.total || 0), 0)
+
+    // CMV (dono, 24/11/2026): o custo médio gravado em cada item no dia da
+    // venda, só das unidades que não voltaram.
+    const costBySale: Record<string, number> = {}
+    let itemsWithoutCost = 0
+    for (const it of dreItems) {
+      if (!saleIds.has(it.sale)) continue
+      const qty = (it.quantity || 0) - (it.returned_quantity || 0)
+      const unit = it.cost_price_snapshot || it.cost_price || 0
+      if (qty > 0 && unit <= 0) itemsWithoutCost += 1
+      costBySale[it.sale] = (costBySale[it.sale] || 0) + Math.max(0, qty) * unit
+    }
+    const cmv = Object.values(costBySale).reduce((acc, v) => acc + v, 0)
+    const grossProfit = netRevenue - returnsValue - cmv
+    const salesDetail = filteredSales
+      .map((s) => {
+        const revenue =
+          (s.subtotal || s.total) - (s.total_discount || 0) - (refundBySale[s.id] || 0)
+        const cost = costBySale[s.id] || 0
+        return { id: s.id, number: s.number, created: s.created, revenue, cost }
+      })
+      .sort((a, b) => a.created.localeCompare(b.created))
 
     // Despesas operacionais por competência
     const operationalExpenses = transactionsData
@@ -405,7 +451,8 @@ export default function Reports() {
       })
       .reduce((acc, t) => acc + (t.amount || 0), 0)
 
-    // Compra de estoque (CMV estimado)
+    // Compras de estoque lançadas no Financeiro: só informação. A compra vira
+    // custo quando o produto é vendido (CMV acima), senão contaria duas vezes.
     const stockPurchases = transactionsData
       .filter((t) => {
         if (t.type !== 'compra_estoque') return false
@@ -425,22 +472,38 @@ export default function Reports() {
       })
       .reduce((acc, c) => acc + (c.value || 0), 0)
 
-    const totalCostsAndExpenses = operationalExpenses + stockPurchases + periodCommissions
-    const netOperatingResult = netRevenue - returnsValue - totalCostsAndExpenses
+    const totalCostsAndExpenses = cmv + operationalExpenses + periodCommissions
+    const netOperatingResult = grossProfit - operationalExpenses - periodCommissions
 
     return {
       grossRevenue,
       discounts,
       netRevenue,
       returnsValue,
+      cmv,
+      itemsWithoutCost,
+      grossProfit,
+      voidedCount: voidedSales.length,
+      voidedValue,
       stockPurchases,
       operationalExpenses,
       periodCommissions,
       totalCostsAndExpenses,
       netOperatingResult,
       salesCount: filteredSales.length,
+      salesDetail,
     }
-  }, [reportType, salesData, transactionsData, commissionsData, startDate, endDate, selectedStore])
+  }, [
+    reportType,
+    salesData,
+    transactionsData,
+    commissionsData,
+    dreItems,
+    dreReturns,
+    startDate,
+    endDate,
+    selectedStore,
+  ])
 
   // Current Active Report Definition
   const activeDef = REPORT_DEFINITIONS.find((r) => r.id === reportType)!
@@ -514,11 +577,18 @@ export default function Reports() {
       csvContent += `"Receita Bruta de Vendas";"${dreData.grossRevenue}"\r\n`
       csvContent += `"(-) Descontos Concedidos";"-${dreData.discounts}"\r\n`
       csvContent += `"(=) Receita Líquida";"${dreData.netRevenue}"\r\n`
-      csvContent += `"(-) Devoluções e Cancelamentos";"-${dreData.returnsValue}"\r\n`
-      csvContent += `"(-) Compra de Estoque / CMV";"-${dreData.stockPurchases}"\r\n`
+      csvContent += `"(-) Devoluções Parciais";"-${dreData.returnsValue}"\r\n`
+      csvContent += `"(-) Custo das Mercadorias Vendidas (CMV)";"-${dreData.cmv}"\r\n`
+      csvContent += `"(=) Lucro Bruto";"${dreData.grossProfit}"\r\n`
       csvContent += `"(-) Despesas Operacionais";"-${dreData.operationalExpenses}"\r\n`
       csvContent += `"(-) Comissões da Equipe";"-${dreData.periodCommissions}"\r\n`
       csvContent += `"(=) Resultado Operacional Líquido";"${dreData.netOperatingResult}"\r\n`
+      csvContent += `"Informativo: Vendas Canceladas ou Devolvidas (fora da receita)";"${dreData.voidedValue}"\r\n`
+      csvContent += `"Informativo: Compras de Estoque no Financeiro";"${dreData.stockPurchases}"\r\n`
+      csvContent += '\r\nVenda;Data;Receita_Liquida;Custo_CMV;Margem\r\n'
+      dreData.salesDetail.forEach((d) => {
+        csvContent += `"${d.number || ''}";"${formatDateBR(d.created)}";"${d.revenue}";"${d.cost}";"${d.revenue - d.cost}"\r\n`
+      })
     }
 
     const encodedUri = encodeURI(csvContent)
@@ -1458,13 +1528,26 @@ export default function Reports() {
                 </div>
 
                 <div className="flex justify-between py-2 text-muted-foreground">
-                  <span>(-) Devoluções de Mercadorias e Vendas Canceladas</span>
+                  <span>(-) Devoluções Parciais de Mercadorias</span>
                   <span className="text-red-500">- {formatBRL(dreData.returnsValue)}</span>
                 </div>
 
-                <div className="flex justify-between py-2 text-muted-foreground">
-                  <span>(-) Custo de Mercadorias / Compra de Estoque (CMV)</span>
-                  <span className="text-red-500">- {formatBRL(dreData.stockPurchases)}</span>
+                <div className="flex justify-between gap-3 py-2 text-muted-foreground">
+                  <span>
+                    (-) Custo das Mercadorias Vendidas (CMV)
+                    <span className="block text-[11px]">
+                      Custo médio de cada produto no dia da venda
+                      {dreData.itemsWithoutCost > 0
+                        ? ` · ${dreData.itemsWithoutCost} item(ns) vendido(s) sem custo cadastrado`
+                        : ''}
+                    </span>
+                  </span>
+                  <span className="whitespace-nowrap text-red-500">- {formatBRL(dreData.cmv)}</span>
+                </div>
+
+                <div className="flex justify-between py-2.5 font-bold bg-gray-50/70 px-2 rounded">
+                  <span>(=) LUCRO BRUTO</span>
+                  <span className="text-gray-900">{formatBRL(dreData.grossProfit)}</span>
                 </div>
 
                 <div className="flex justify-between py-2 text-muted-foreground">
@@ -1487,6 +1570,70 @@ export default function Reports() {
                   <span>(=) RESULTADO OPERACIONAL LÍQUIDO</span>
                   <span>{formatBRL(dreData.netOperatingResult)}</span>
                 </div>
+              </div>
+
+              <div className="space-y-1 rounded-lg bg-gray-50 p-3 text-[11px] text-gray-600">
+                <p>
+                  Fora do resultado, só para informação: {dreData.voidedCount} venda(s) cancelada(s)
+                  ou devolvida(s) por inteiro no período ({formatBRL(dreData.voidedValue)}), que não
+                  entram na receita; e {formatBRL(dreData.stockPurchases)} de compras de estoque
+                  lançadas no Financeiro, que viram custo quando o produto é vendido.
+                </p>
+              </div>
+            </div>
+
+            <div className="border rounded-xl p-5 bg-card space-y-3">
+              <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground border-b pb-2">
+                Custo e margem de cada venda
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="py-2 px-3 font-semibold">Venda</th>
+                      <th className="py-2 px-3 font-semibold">Data</th>
+                      <th className="py-2 px-3 font-semibold text-right">Receita líquida</th>
+                      <th className="py-2 px-3 font-semibold text-right">Custo (CMV)</th>
+                      <th className="py-2 px-3 font-semibold text-right">Margem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {dreData.salesDetail.map((d) => {
+                      const margin = d.revenue - d.cost
+                      return (
+                        <tr key={d.id}>
+                          <td className="py-2 px-3 font-medium text-gray-900">{d.number || '—'}</td>
+                          <td className="py-2 px-3 whitespace-nowrap text-gray-600">
+                            {formatDateBR(d.created)}
+                          </td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
+                            {formatBRL(d.revenue)}
+                          </td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap text-red-500">
+                            {d.cost > 0 ? `- ${formatBRL(d.cost)}` : 'sem custo'}
+                          </td>
+                          <td
+                            className={`py-2 px-3 text-right whitespace-nowrap font-semibold ${
+                              margin >= 0 ? 'text-[#0A8F5C]' : 'text-red-600'
+                            }`}
+                          >
+                            {formatBRL(margin)}
+                            {d.revenue > 0 && d.cost > 0
+                              ? ` (${((margin / d.revenue) * 100).toFixed(1).replace('.', ',')}%)`
+                              : ''}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {dreData.salesDetail.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-gray-400">
+                          Nenhuma venda confirmada no período.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
