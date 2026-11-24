@@ -63,8 +63,8 @@ import { nfMessage } from '@/lib/nf'
 export function SaleDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { user, isAdmin, isManager, canApprove } = useAuth()
-  const salesPath = canApprove ? '/vendas' : '/minhas-vendas'
+  const { user, isAdmin, isManager, isMarketplace, canApprove } = useAuth()
+  const salesPath = canApprove || isMarketplace ? '/vendas' : '/minhas-vendas'
 
   // Decisão do administrador sobre venda aguardando aprovação.
   const [approvalNote, setApprovalNote] = useState('')
@@ -547,11 +547,13 @@ export function SaleDetail() {
             </>
           )}
 
-          {/* Add Document button */}
-          <Button size="sm" variant="default" onClick={openDocModal}>
-            <Upload className="h-4 w-4 mr-1.5" />
-            {isConfirmed ? 'Anexar Documento / NF' : 'Anexar Documento'}
-          </Button>
+          {/* Add Document button (o perfil Marketplace só consulta) */}
+          {!isMarketplace && (
+            <Button size="sm" variant="default" onClick={openDocModal}>
+              <Upload className="h-4 w-4 mr-1.5" />
+              {isConfirmed ? 'Anexar Documento / NF' : 'Anexar Documento'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1080,10 +1082,12 @@ export function SaleDetail() {
                   PDF, XML da nota fiscal externa, termos de garantia e comprovantes assinados
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={openDocModal}>
-                <Upload className="h-4 w-4 mr-1.5" />
-                Novo Anexo
-              </Button>
+              {!isMarketplace && (
+                <Button size="sm" onClick={openDocModal}>
+                  <Upload className="h-4 w-4 mr-1.5" />
+                  Novo Anexo
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {documents.length === 0 ? (

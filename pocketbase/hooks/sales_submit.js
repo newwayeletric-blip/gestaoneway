@@ -28,6 +28,10 @@ routerAdd('POST', '/backend/v1/sales', (e) => {
   if (!auth || auth.collection().name !== 'users' || auth.getString('status') !== 'ativo') {
     throw new ForbiddenError('Faça login para continuar.')
   }
+  // O perfil Marketplace (dono, 24/11/2026) só cuida dos pedidos e anúncios.
+  if (auth.getString('profile') === 'marketplace') {
+    throw new ForbiddenError('O perfil Marketplace não lança vendas.')
+  }
   const isAdmin = auth.getString('profile') === 'admin'
   const orgId = auth.getString('org')
   const body = e.requestInfo().body || {}

@@ -1,4 +1,5 @@
-export type UserProfile = 'admin' | 'gerente' | 'vendedor'
+// marketplace (dono, 24/11/2026): só os pedidos, anúncios e vendas dos marketplaces.
+export type UserProfile = 'admin' | 'gerente' | 'vendedor' | 'marketplace'
 export type UserStatus = 'ativo' | 'inativo'
 
 export interface UserRecord {

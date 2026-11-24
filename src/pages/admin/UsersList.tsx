@@ -113,8 +113,8 @@ export default function UsersList() {
           name: name.trim(),
           profile: profile,
           status: status,
-          stores: selectedStores,
-          cs_available: csAvailable,
+          stores: profile === 'marketplace' ? [] : selectedStores,
+          cs_available: profile === 'marketplace' ? false : csAvailable,
         }
         if (password.length >= 8) {
           updatePayload.password = password
@@ -141,8 +141,8 @@ export default function UsersList() {
           passwordConfirm: password,
           profile: profile,
           status: status,
-          stores: selectedStores,
-          cs_available: csAvailable,
+          stores: profile === 'marketplace' ? [] : selectedStores,
+          cs_available: profile === 'marketplace' ? false : csAvailable,
           created_by: currentUser?.id,
           emailVisibility: true,
         })
@@ -250,14 +250,18 @@ export default function UsersList() {
                           ? 'bg-[#111111] text-white'
                           : u.profile === 'gerente'
                             ? 'bg-purple-100 text-purple-800'
-                            : 'bg-blue-100 text-blue-800'
+                            : u.profile === 'marketplace'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-blue-100 text-blue-800'
                       }
                     >
                       {u.profile === 'admin'
                         ? 'ADMINISTRADOR'
                         : u.profile === 'gerente'
                           ? 'GERENTE'
-                          : 'VENDEDOR'}
+                          : u.profile === 'marketplace'
+                            ? 'MARKETPLACE'
+                            : 'VENDEDOR'}
                     </Badge>
                   </td>
                   <td className="py-3 px-3">
@@ -274,6 +278,8 @@ export default function UsersList() {
                   <td className="py-3 px-3 text-gray-600">
                     {u.profile === 'admin' ? (
                       <span className="text-gray-400 italic">Todas as unidades</span>
+                    ) : u.profile === 'marketplace' ? (
+                      <span className="text-gray-400 italic">Só os marketplaces</span>
                     ) : u.stores && u.stores.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {u.stores.map((sId) => {
@@ -397,6 +403,7 @@ export default function UsersList() {
                   <SelectContent>
                     <SelectItem value="vendedor">Vendedor</SelectItem>
                     <SelectItem value="gerente">Gerente da loja</SelectItem>
+                    <SelectItem value="marketplace">Marketplace</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
                   </SelectContent>
                 </Select>
@@ -416,7 +423,14 @@ export default function UsersList() {
               </div>
             </div>
 
-            {profile !== 'admin' && (
+            {profile === 'marketplace' && (
+              <p className="rounded-md bg-amber-50 p-2 text-[11px] text-amber-900">
+                Marketplace: vê só os pedidos e os anúncios dos marketplaces e as vendas que vieram
+                deles. Não lança venda, não vê clientes da loja, custos nem o financeiro.
+              </p>
+            )}
+
+            {profile !== 'admin' && profile !== 'marketplace' && (
               <div className="space-y-2 pt-1 border-t border-gray-100">
                 <Label className="text-xs font-semibold text-gray-700">
                   Lojas Autorizadas para Venda
@@ -440,18 +454,23 @@ export default function UsersList() {
               </div>
             )}
 
-            <div className="flex items-center gap-2 pt-2">
-              <input
-                id="csAvail"
-                type="checkbox"
-                checked={csAvailable}
-                onChange={(e) => setCsAvailable(e.target.checked)}
-                className="rounded border-gray-300 text-[#0A8F5C] focus:ring-[#0A8F5C]"
-              />
-              <Label htmlFor="csAvail" className="text-xs text-gray-700 font-normal cursor-pointer">
-                Disponível para receber comissões sobre novas vendas
-              </Label>
-            </div>
+            {profile !== 'marketplace' && (
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  id="csAvail"
+                  type="checkbox"
+                  checked={csAvailable}
+                  onChange={(e) => setCsAvailable(e.target.checked)}
+                  className="rounded border-gray-300 text-[#0A8F5C] focus:ring-[#0A8F5C]"
+                />
+                <Label
+                  htmlFor="csAvail"
+                  className="text-xs text-gray-700 font-normal cursor-pointer"
+                >
+                  Disponível para receber comissões sobre novas vendas
+                </Label>
+              </div>
+            )}
 
             <DialogFooter className="pt-4">
               <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>

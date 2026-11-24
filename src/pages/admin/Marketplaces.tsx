@@ -47,7 +47,8 @@ import { useToast } from '@/hooks/use-toast'
 // Marketplaces pelo Bling (dono, 11/11/2026): os pedidos do Mercado Livre (e
 // da Amazon, quando ligada no Bling) viram vendas da loja do canal (a Loja de
 // rua), sem aprovação e sem outra NF; o estoque da loja volta para o Bling,
-// que atualiza os anúncios. Só o administrador.
+// que atualiza os anúncios. O perfil Marketplace (dono, 24/11/2026) vê só as
+// abas Pedidos e Anúncios; canais e estoque ficam com o administrador.
 const KIND_LABELS: Record<ChannelKind, string> = {
   mercado_livre: 'Mercado Livre',
   amazon: 'Amazon',
@@ -96,7 +97,7 @@ interface ChannelDraft {
 
 export default function Marketplaces() {
   const { toast } = useToast()
-  const { stores, user } = useAuth()
+  const { stores, user, isAdmin } = useAuth()
   const [connected, setConnected] = useState<boolean | null>(null)
   const [channels, setChannels] = useState<SalesChannel[]>([])
   const [orders, setOrders] = useState<MarketplaceOrder[]>([])
@@ -138,9 +139,11 @@ export default function Marketplaces() {
     ProductsService.list("status = 'ativo'")
       .then((list) => setProducts([...list].sort((a, b) => a.name.localeCompare(b.name))))
       .catch(() => {})
-    MarketplaceService.staff()
-      .then(setStaff)
-      .catch(() => {})
+    // A equipe só serve para configurar o canal (admin).
+    if (isAdmin)
+      MarketplaceService.staff()
+        .then(setStaff)
+        .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -319,13 +322,20 @@ export default function Marketplaces() {
         <Card className="border-amber-300 bg-amber-50/60">
           <CardContent className="flex items-start gap-3 pt-4 text-sm text-amber-900">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <p>
-              O Bling não está conectado.{' '}
-              <Link to="/configuracoes" className="font-semibold underline">
-                Conecte em Configurações → Bling
-              </Link>{' '}
-              para os marketplaces funcionarem.
-            </p>
+            {isAdmin ? (
+              <p>
+                O Bling não está conectado.{' '}
+                <Link to="/configuracoes" className="font-semibold underline">
+                  Conecte em Configurações → Bling
+                </Link>{' '}
+                para os marketplaces funcionarem.
+              </p>
+            ) : (
+              <p>
+                O Bling não está conectado. Peça ao administrador para conectar em Configurações →
+                Bling.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -391,153 +401,155 @@ export default function Marketplaces() {
         </Card>
       )}
 
-      <Tabs defaultValue="canais" className="space-y-4">
+      <Tabs defaultValue={isAdmin ? 'canais' : 'pedidos'} className="space-y-4">
         <TabsList className="h-auto flex-wrap justify-start">
-          <TabsTrigger value="canais">Canais</TabsTrigger>
+          {isAdmin && <TabsTrigger value="canais">Canais</TabsTrigger>}
           <TabsTrigger value="pedidos">Pedidos</TabsTrigger>
-          <TabsTrigger value="estoque">Estoque</TabsTrigger>
+          {isAdmin && <TabsTrigger value="estoque">Estoque</TabsTrigger>}
           <TabsTrigger value="anuncios">Anúncios</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="canais" className="space-y-4">
-          {channels.length === 0 && (
-            <p className="text-sm text-gray-500">
-              Nenhum canal ainda. Clique em "Adicionar canal do Bling" para escolher o Mercado
-              Livre.
-            </p>
-          )}
-          {channels.map((c) => (
-            <Card key={c.id} className="border-0 bg-white shadow-sm">
-              <CardContent className="flex flex-col gap-3 pt-5 text-sm sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                    {c.name}
-                    <Badge variant="outline">{KIND_LABELS[c.kind] || c.kind}</Badge>
-                    {c.active ? (
-                      <Badge className="bg-emerald-600 text-white">Importando</Badge>
-                    ) : (
-                      <Badge variant="outline">Desligado</Badge>
+        {isAdmin && (
+          <TabsContent value="canais" className="space-y-4">
+            {channels.length === 0 && (
+              <p className="text-sm text-gray-500">
+                Nenhum canal ainda. Clique em "Adicionar canal do Bling" para escolher o Mercado
+                Livre.
+              </p>
+            )}
+            {channels.map((c) => (
+              <Card key={c.id} className="border-0 bg-white shadow-sm">
+                <CardContent className="flex flex-col gap-3 pt-5 text-sm sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                      {c.name}
+                      <Badge variant="outline">{KIND_LABELS[c.kind] || c.kind}</Badge>
+                      {c.active ? (
+                        <Badge className="bg-emerald-600 text-white">Importando</Badge>
+                      ) : (
+                        <Badge variant="outline">Desligado</Badge>
+                      )}
+                      {c.sync_stock && (
+                        <Badge className="bg-sky-600 text-white">Estoque indo para o Bling</Badge>
+                      )}
+                    </div>
+                    <p className="text-gray-600">
+                      Estoque: <strong>{storeName(c.stock_store)}</strong> · pedidos desde{' '}
+                      {c.import_from || '—'} · última busca: {when(c.last_import_at)}
+                    </p>
+                    <p className="text-gray-600">
+                      {c.imported} venda(s) criada(s)
+                      {c.waiting ? ` · ${c.waiting} esperando vínculo` : ''}
+                      {c.errors ? ` · ${c.errors} com erro` : ''}
+                    </p>
+                    {c.last_error && (
+                      <p className="flex items-start gap-1 text-amber-800">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {c.last_error}
+                      </p>
                     )}
-                    {c.sync_stock && (
-                      <Badge className="bg-sky-600 text-white">Estoque indo para o Bling</Badge>
+                    {checks[c.id] && (
+                      <ul className="mt-2 space-y-0.5">
+                        {checks[c.id].map((k) => (
+                          <li
+                            key={k.name}
+                            className={`flex items-center gap-1.5 ${k.ok ? 'text-emerald-700' : 'text-red-700'}`}
+                          >
+                            {k.ok ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                              <XCircle className="h-4 w-4" />
+                            )}
+                            {k.name}
+                            {k.ok ? '' : `: ${k.detail}`}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                  <p className="text-gray-600">
-                    Estoque: <strong>{storeName(c.stock_store)}</strong> · pedidos desde{' '}
-                    {c.import_from || '—'} · última busca: {when(c.last_import_at)}
-                  </p>
-                  <p className="text-gray-600">
-                    {c.imported} venda(s) criada(s)
-                    {c.waiting ? ` · ${c.waiting} esperando vínculo` : ''}
-                    {c.errors ? ` · ${c.errors} com erro` : ''}
-                  </p>
-                  {c.last_error && (
-                    <p className="flex items-start gap-1 text-amber-800">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {c.last_error}
-                    </p>
-                  )}
-                  {checks[c.id] && (
-                    <ul className="mt-2 space-y-0.5">
-                      {checks[c.id].map((k) => (
-                        <li
-                          key={k.name}
-                          className={`flex items-center gap-1.5 ${k.ok ? 'text-emerald-700' : 'text-red-700'}`}
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => importNow(c)}
+                      disabled={!!busy || !c.stock_store}
+                    >
+                      <Download className="mr-1.5 h-4 w-4" />
+                      {busy === 'import-' + c.id ? 'Buscando...' : 'Buscar pedidos agora'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => editChannel(c)}>
+                      <Settings2 className="mr-1.5 h-4 w-4" /> Configurar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => checkChannel(c)}
+                      disabled={!!busy}
+                    >
+                      <ShieldCheck className="mr-1.5 h-4 w-4" />
+                      {busy === 'check-' + c.id ? 'Conferindo...' : 'Conferir permissões do Bling'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            <Card className="border-dashed bg-white shadow-none">
+              <CardContent className="space-y-3 pt-5 text-sm">
+                <Button
+                  variant="outline"
+                  onClick={openDiscover}
+                  disabled={!!busy || connected === false}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  {busy === 'discover' ? 'Lendo o Bling...' : 'Adicionar canal do Bling'}
+                </Button>
+                {discovered && (
+                  <div className="space-y-2">
+                    {discovered.source === 'pedidos' && (
+                      <p className="text-xs text-gray-500">
+                        Canais achados pelos pedidos dos últimos 120 dias. O pedido do Mercado Livre
+                        começa com 2000.
+                      </p>
+                    )}
+                    {discovered.channels.filter((d) => !configuredIds.has(d.bling_store_id))
+                      .length === 0 && <p className="text-gray-500">Nenhum canal novo no Bling.</p>}
+                    {discovered.channels
+                      .filter((d) => !configuredIds.has(d.bling_store_id))
+                      .map((d) => (
+                        <div
+                          key={d.bling_store_id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
                         >
-                          {k.ok ? (
-                            <CheckCircle2 className="h-4 w-4" />
-                          ) : (
-                            <XCircle className="h-4 w-4" />
-                          )}
-                          {k.name}
-                          {k.ok ? '' : `: ${k.detail}`}
-                        </li>
+                          <p>
+                            <StoreIcon className="mr-1 inline h-4 w-4" />
+                            <strong>{d.name || `Canal ${d.bling_store_id}`}</strong>{' '}
+                            {d.type && <span className="text-gray-500">({d.type})</span>}
+                            {d.orders ? (
+                              <span className="text-gray-500">
+                                {' '}
+                                · {d.orders} pedido(s), ex.: {d.sample}
+                              </span>
+                            ) : null}
+                          </p>
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              startDraft(
+                                { bling_store_id: d.bling_store_id, name: d.name },
+                                `${d.name} ${d.type} ${d.sample?.startsWith('2000') ? 'Mercado Livre' : ''}`,
+                              )
+                            }
+                          >
+                            Configurar este canal
+                          </Button>
+                        </div>
                       ))}
-                    </ul>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => importNow(c)}
-                    disabled={!!busy || !c.stock_store}
-                  >
-                    <Download className="mr-1.5 h-4 w-4" />
-                    {busy === 'import-' + c.id ? 'Buscando...' : 'Buscar pedidos agora'}
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => editChannel(c)}>
-                    <Settings2 className="mr-1.5 h-4 w-4" /> Configurar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => checkChannel(c)}
-                    disabled={!!busy}
-                  >
-                    <ShieldCheck className="mr-1.5 h-4 w-4" />
-                    {busy === 'check-' + c.id ? 'Conferindo...' : 'Conferir permissões do Bling'}
-                  </Button>
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
-
-          <Card className="border-dashed bg-white shadow-none">
-            <CardContent className="space-y-3 pt-5 text-sm">
-              <Button
-                variant="outline"
-                onClick={openDiscover}
-                disabled={!!busy || connected === false}
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                {busy === 'discover' ? 'Lendo o Bling...' : 'Adicionar canal do Bling'}
-              </Button>
-              {discovered && (
-                <div className="space-y-2">
-                  {discovered.source === 'pedidos' && (
-                    <p className="text-xs text-gray-500">
-                      Canais achados pelos pedidos dos últimos 120 dias. O pedido do Mercado Livre
-                      começa com 2000.
-                    </p>
-                  )}
-                  {discovered.channels.filter((d) => !configuredIds.has(d.bling_store_id))
-                    .length === 0 && <p className="text-gray-500">Nenhum canal novo no Bling.</p>}
-                  {discovered.channels
-                    .filter((d) => !configuredIds.has(d.bling_store_id))
-                    .map((d) => (
-                      <div
-                        key={d.bling_store_id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
-                      >
-                        <p>
-                          <StoreIcon className="mr-1 inline h-4 w-4" />
-                          <strong>{d.name || `Canal ${d.bling_store_id}`}</strong>{' '}
-                          {d.type && <span className="text-gray-500">({d.type})</span>}
-                          {d.orders ? (
-                            <span className="text-gray-500">
-                              {' '}
-                              · {d.orders} pedido(s), ex.: {d.sample}
-                            </span>
-                          ) : null}
-                        </p>
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            startDraft(
-                              { bling_store_id: d.bling_store_id, name: d.name },
-                              `${d.name} ${d.type} ${d.sample?.startsWith('2000') ? 'Mercado Livre' : ''}`,
-                            )
-                          }
-                        >
-                          Configurar este canal
-                        </Button>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+          </TabsContent>
+        )}
 
         <TabsContent value="pedidos" className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -557,6 +569,20 @@ export default function Marketplaces() {
                 </option>
               ))}
             </select>
+            {channels
+              .filter((c) => c.active && c.stock_store)
+              .map((c) => (
+                <Button
+                  key={c.id}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => importNow(c)}
+                  disabled={!!busy}
+                >
+                  <Download className="mr-1.5 h-4 w-4" />
+                  {busy === 'import-' + c.id ? 'Buscando...' : `Buscar pedidos agora: ${c.name}`}
+                </Button>
+              ))}
           </div>
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
             <table className="w-full min-w-[720px] text-sm">
@@ -773,94 +799,100 @@ export default function Marketplaces() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="estoque" className="space-y-3">
-          <Card className="border-0 bg-white shadow-sm">
-            <CardContent className="space-y-3 pt-5 text-sm">
-              <p className="text-gray-600">
-                Compare o estoque da loja do canal com o do Bling (o que os anúncios mostram). Com
-                "Mandar o estoque da loja para o Bling" ligado no canal, o sistema manda o saldo a
-                cada 5 minutos, e o Bling atualiza os anúncios.
-              </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="space-y-1">
-                  <Label htmlFor="stockChannel" className="text-xs font-semibold">
-                    Canal
-                  </Label>
-                  <select
-                    id="stockChannel"
-                    value={stockChannel}
-                    onChange={(e) => {
-                      setStockChannel(e.target.value)
-                      setStockRows(null)
-                    }}
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {channels.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button variant="outline" onClick={compareStock} disabled={!stockChannel || !!busy}>
-                  <RefreshCw className="mr-1.5 h-4 w-4" />
-                  {busy === 'stock' ? 'Comparando...' : 'Comparar com o Bling'}
-                </Button>
-                {selectedChannel?.sync_stock && (
-                  <Button
-                    onClick={pushStock}
-                    disabled={!!busy}
-                    className="bg-[#0A8F5C] text-white hover:bg-[#087A4D]"
-                  >
-                    <ArrowUpFromLine className="mr-1.5 h-4 w-4" />
-                    {busy === 'push' ? 'Mandando...' : 'Mandar estoque agora'}
-                  </Button>
-                )}
-              </div>
-              {stockRows && (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-sm">
-                    <thead className="border-b text-left text-xs uppercase text-gray-500">
-                      <tr>
-                        <th className="py-2 pr-3">Produto</th>
-                        <th className="py-2 pr-3">Código no Bling</th>
-                        <th className="py-2 pr-3 text-right">
-                          {storeName(selectedChannel?.stock_store || '')}
-                        </th>
-                        <th className="py-2 pr-3 text-right">Bling</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {stockRows.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="py-4 text-center text-gray-500">
-                            Nenhum produto vinculado ainda. Os vínculos aparecem quando os pedidos
-                            entram.
-                          </td>
-                        </tr>
-                      )}
-                      {stockRows.map((r) => (
-                        <tr key={r.bling_product_id}>
-                          <td className="py-2 pr-3">
-                            {r.product_name}{' '}
-                            <span className="font-mono text-xs text-gray-500">{r.sku}</span>
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-xs">{r.bling_code}</td>
-                          <td className="py-2 pr-3 text-right font-semibold">{r.system_qty}</td>
-                          <td
-                            className={`py-2 pr-3 text-right ${r.system_qty !== r.bling_qty ? 'font-semibold text-amber-700' : ''}`}
-                          >
-                            {r.bling_qty}
-                          </td>
-                        </tr>
+        {isAdmin && (
+          <TabsContent value="estoque" className="space-y-3">
+            <Card className="border-0 bg-white shadow-sm">
+              <CardContent className="space-y-3 pt-5 text-sm">
+                <p className="text-gray-600">
+                  Compare o estoque da loja do canal com o do Bling (o que os anúncios mostram). Com
+                  "Mandar o estoque da loja para o Bling" ligado no canal, o sistema manda o saldo a
+                  cada 5 minutos, e o Bling atualiza os anúncios.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="stockChannel" className="text-xs font-semibold">
+                      Canal
+                    </Label>
+                    <select
+                      id="stockChannel"
+                      value={stockChannel}
+                      onChange={(e) => {
+                        setStockChannel(e.target.value)
+                        setStockRows(null)
+                      }}
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {channels.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
+                    </select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={compareStock}
+                    disabled={!stockChannel || !!busy}
+                  >
+                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                    {busy === 'stock' ? 'Comparando...' : 'Comparar com o Bling'}
+                  </Button>
+                  {selectedChannel?.sync_stock && (
+                    <Button
+                      onClick={pushStock}
+                      disabled={!!busy}
+                      className="bg-[#0A8F5C] text-white hover:bg-[#087A4D]"
+                    >
+                      <ArrowUpFromLine className="mr-1.5 h-4 w-4" />
+                      {busy === 'push' ? 'Mandando...' : 'Mandar estoque agora'}
+                    </Button>
+                  )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                {stockRows && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[600px] text-sm">
+                      <thead className="border-b text-left text-xs uppercase text-gray-500">
+                        <tr>
+                          <th className="py-2 pr-3">Produto</th>
+                          <th className="py-2 pr-3">Código no Bling</th>
+                          <th className="py-2 pr-3 text-right">
+                            {storeName(selectedChannel?.stock_store || '')}
+                          </th>
+                          <th className="py-2 pr-3 text-right">Bling</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {stockRows.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="py-4 text-center text-gray-500">
+                              Nenhum produto vinculado ainda. Os vínculos aparecem quando os pedidos
+                              entram.
+                            </td>
+                          </tr>
+                        )}
+                        {stockRows.map((r) => (
+                          <tr key={r.bling_product_id}>
+                            <td className="py-2 pr-3">
+                              {r.product_name}{' '}
+                              <span className="font-mono text-xs text-gray-500">{r.sku}</span>
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-xs">{r.bling_code}</td>
+                            <td className="py-2 pr-3 text-right font-semibold">{r.system_qty}</td>
+                            <td
+                              className={`py-2 pr-3 text-right ${r.system_qty !== r.bling_qty ? 'font-semibold text-amber-700' : ''}`}
+                            >
+                              {r.bling_qty}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={!!draft} onOpenChange={(open) => !open && setDraft(null)}>

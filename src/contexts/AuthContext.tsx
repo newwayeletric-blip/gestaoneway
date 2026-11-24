@@ -5,11 +5,13 @@ import { StoresService } from '@/services/api'
 
 interface AuthContextType {
   user: UserRecord | null
-  profile: 'admin' | 'gerente' | 'vendedor' | null
+  profile: 'admin' | 'gerente' | 'vendedor' | 'marketplace' | null
   isAdmin: boolean
   isSeller: boolean
   // Gerente da loja: vende e aprova as vendas das lojas dele (sem custos).
   isManager: boolean
+  // Marketplace: só os pedidos, anúncios e vendas dos marketplaces.
+  isMarketplace: boolean
   // Quem aprova venda: o administrador ou o gerente.
   canApprove: boolean
   isLoading: boolean
@@ -153,6 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isAdmin = profile === 'admin'
   const isSeller = profile === 'vendedor'
   const isManager = profile === 'gerente'
+  const isMarketplace = profile === 'marketplace'
   const canApprove = isAdmin || isManager
 
   const authorizedStores = useMemo(() => {
@@ -169,6 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         isSeller,
         isManager,
+        isMarketplace,
         canApprove,
         isLoading,
         stores,

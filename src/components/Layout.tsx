@@ -47,6 +47,7 @@ export default function Layout() {
     isAdmin,
     isSeller,
     isManager,
+    isMarketplace,
     canApprove,
     logout,
     stores,
@@ -135,7 +136,19 @@ export default function Layout() {
     ...sellerMenuItems.slice(3),
   ]
 
-  const menuItems = isAdmin ? adminMenuItems : isManager ? managerMenuItems : sellerMenuItems
+  // Marketplace: só os pedidos e anúncios e as vendas que vieram deles.
+  const marketplaceMenuItems = [
+    { label: 'Marketplaces', path: '/marketplaces', icon: Globe },
+    { label: 'Vendas dos marketplaces', path: '/vendas', icon: ShoppingCart },
+  ]
+
+  const menuItems = isAdmin
+    ? adminMenuItems
+    : isManager
+      ? managerMenuItems
+      : isMarketplace
+        ? marketplaceMenuItems
+        : sellerMenuItems
 
   // Admin da rede (PER-01, D.3): grupo "Rede" no topo, antes do menu da
   // organização dele. Os demais usuários veem o menu sem grupos.
@@ -165,7 +178,12 @@ export default function Layout() {
     const path = location.pathname
     if (path.startsWith('/vendas/nova')) return 'Nova Venda (Balcão)'
     if (path.startsWith('/vendas/')) return 'Detalhes da Venda'
-    if (path === '/vendas') return isManager ? 'Vendas da Loja' : 'Gestão de Vendas'
+    if (path === '/vendas')
+      return isManager
+        ? 'Vendas da Loja'
+        : isMarketplace
+          ? 'Vendas dos Marketplaces'
+          : 'Gestão de Vendas'
     if (path === '/minhas-vendas') return 'Minhas Vendas'
     if (path.startsWith('/clientes/')) return 'Ficha do Cliente'
     if (path === '/clientes') return 'Clientes & Atendimento'
@@ -218,10 +236,18 @@ export default function Layout() {
                   ? 'bg-[#0A8F5C] text-white text-[10px] px-2 py-0.5'
                   : isManager
                     ? 'bg-purple-600 text-white text-[10px] px-2 py-0.5'
-                    : 'bg-blue-600 text-white text-[10px] px-2 py-0.5'
+                    : isMarketplace
+                      ? 'bg-amber-500 text-white text-[10px] px-2 py-0.5'
+                      : 'bg-blue-600 text-white text-[10px] px-2 py-0.5'
               }
             >
-              {isAdmin ? 'ADMINISTRADOR' : isManager ? 'GERENTE' : 'VENDEDOR'}
+              {isAdmin
+                ? 'ADMINISTRADOR'
+                : isManager
+                  ? 'GERENTE'
+                  : isMarketplace
+                    ? 'MARKETPLACE'
+                    : 'VENDEDOR'}
             </Badge>
           </div>
         </div>
@@ -482,7 +508,9 @@ export default function Layout() {
                           ? 'Administrador'
                           : isManager
                             ? 'Gerente da loja'
-                            : 'Vendedor Autorizado'}
+                            : isMarketplace
+                              ? 'Marketplace'
+                              : 'Vendedor Autorizado'}
                       </span>
                     </div>
                   </div>

@@ -32,7 +32,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 }
 
 export default function SalesList({ mySalesOnly = false }: SalesListProps) {
-  const { user, isAdmin, canApprove, stores } = useAuth()
+  const { user, isAdmin, isMarketplace, canApprove, stores } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [sales, setSales] = useState<SaleRecord[]>([])
   const [search, setSearch] = useState('')
@@ -93,20 +93,28 @@ export default function SalesList({ mySalesOnly = false }: SalesListProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-[#111111]">
-            {mySalesOnly ? 'Minhas Vendas' : 'Gestão de Vendas Realizadas'}
+            {mySalesOnly
+              ? 'Minhas Vendas'
+              : isMarketplace
+                ? 'Vendas dos Marketplaces'
+                : 'Gestão de Vendas Realizadas'}
           </h2>
           <p className="text-sm text-gray-500">
             {mySalesOnly
               ? 'Consulte o histórico de suas vendas e emissão de comprovantes.'
-              : 'Histórico unificado das vendas de todas as lojas.'}
+              : isMarketplace
+                ? 'As vendas que vieram dos pedidos do Mercado Livre e dos outros marketplaces.'
+                : 'Histórico unificado das vendas de todas as lojas.'}
           </p>
         </div>
 
-        <Button asChild className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white">
-          <Link to="/vendas/nova">
-            <PlusCircle className="mr-2 h-4 w-4" /> Nova Venda (Balcão)
-          </Link>
-        </Button>
+        {!isMarketplace && (
+          <Button asChild className="bg-[#0A8F5C] hover:bg-[#087A4D] text-white">
+            <Link to="/vendas/nova">
+              <PlusCircle className="mr-2 h-4 w-4" /> Nova Venda (Balcão)
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* FILTER BAR */}

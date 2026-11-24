@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import Forbidden from '@/pages/Forbidden'
 import { Loader2 } from 'lucide-react'
 
-type Profile = 'admin' | 'gerente' | 'vendedor'
+type Profile = 'admin' | 'gerente' | 'vendedor' | 'marketplace'
 
 interface ProtectedRouteProps {
   // Um perfil ou a lista de perfis que entram na rota.
@@ -73,6 +73,9 @@ export const PublicOnlyRoute: React.FC = () => {
   if (user) {
     if (profile === 'admin') {
       return <Navigate to="/dashboard" replace />
+    }
+    if (profile === 'marketplace') {
+      return <Navigate to="/marketplaces" replace />
     }
     return <Navigate to="/meu-painel" replace />
   }

@@ -1,6 +1,9 @@
 /**
- * Marketplaces pelo Bling (dono, 11/11/2026), na tela Marketplaces (só o
- * administrador). A lógica fica em pocketbase/hooks/lib/marketplace.js.
+ * Marketplaces pelo Bling (dono, 11/11/2026), na tela Marketplaces. A lógica
+ * fica em pocketbase/hooks/lib/marketplace.js. O perfil "marketplace" (dono,
+ * 24/11/2026) vê o resumo, os pedidos e os anúncios, busca pedidos, vincula
+ * produto e pausa ou publica anúncio; configurar canal, ler o Bling para
+ * achar canal, o estoque e a conferência de permissões ficam com o admin.
  * - GET  /backend/v1/marketplaces               canais configurados e resumo
  * - GET  /backend/v1/marketplaces/discover      canais e depósitos do Bling
  * - POST /backend/v1/marketplaces/channels      cria ou altera um canal
@@ -23,9 +26,11 @@ routerAdd('GET', '/backend/v1/marketplaces', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   const orgId = auth.getString('org')
   const bling = require(`${__hooks}/lib/bling.js`)
@@ -179,9 +184,11 @@ routerAdd('POST', '/backend/v1/marketplaces/channels/{id}/import', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   let channel = null
   try {
@@ -222,9 +229,11 @@ routerAdd('GET', '/backend/v1/marketplaces/orders', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   const status = String(e.request.url.query().get('status') || '')
   const statuses = ['importado', 'aguardando_vinculo', 'ignorado', 'cancelado', 'erro']
@@ -270,9 +279,11 @@ routerAdd('POST', '/backend/v1/marketplaces/links', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   const orgId = auth.getString('org')
   const body = e.requestInfo().body || {}
@@ -422,9 +433,11 @@ routerAdd('GET', '/backend/v1/marketplaces/channels/{id}/listings', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   let channel = null
   try {
@@ -483,9 +496,11 @@ routerAdd('POST', '/backend/v1/marketplaces/channels/{id}/listings', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   let channel = null
   try {
@@ -512,9 +527,11 @@ routerAdd('POST', '/backend/v1/marketplaces/listings/{id}/{action}', (e) => {
     !auth ||
     auth.collection().name !== 'users' ||
     auth.getString('status') !== 'ativo' ||
-    auth.getString('profile') !== 'admin'
+    ['admin', 'marketplace'].indexOf(auth.getString('profile')) === -1
   ) {
-    throw new ForbiddenError('Só o administrador mexe nos marketplaces.')
+    throw new ForbiddenError(
+      'Só o administrador ou o perfil Marketplace mexem nos pedidos e anúncios.',
+    )
   }
   const action = e.request.pathValue('action')
   if (['pausar', 'publicar'].indexOf(action) === -1) throw new NotFoundError('Ação desconhecida.')

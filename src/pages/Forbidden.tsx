@@ -8,7 +8,9 @@ export default function Forbidden() {
   const { profile } = useAuth()
 
   const handleBack = () => {
-    if (profile !== 'admin') {
+    if (profile === 'marketplace') {
+      navigate('/marketplaces')
+    } else if (profile !== 'admin') {
       navigate('/meu-painel')
     } else {
       navigate('/dashboard')

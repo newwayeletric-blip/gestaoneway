@@ -45,6 +45,8 @@ export default function Login() {
 
       if (authData.record.profile === 'admin') {
         navigate('/dashboard', { replace: true })
+      } else if (authData.record.profile === 'marketplace') {
+        navigate('/marketplaces', { replace: true })
       } else {
         navigate('/meu-painel', { replace: true })
       }

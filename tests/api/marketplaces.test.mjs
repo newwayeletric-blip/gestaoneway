@@ -6,6 +6,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { SETUP_TOKEN, client, runPocketBase, startPocketBase } from './harness.mjs'
 
 const PASSWORD = 'SenhaForte!2026'
@@ -451,6 +452,75 @@ test('canal novo no Bling entra sozinho: a Amazon pelo CNPJ do intermediador', a
   // Na próxima busca não cria de novo.
   assert.deepEqual((await importNow()).new_channels, [])
   assert.equal((await req('GET', '/backend/v1/marketplaces')).json.channels.filter((c) => c.bling_store_id === '888').length, 1)
+})
+
+// Perfil Marketplace (dono, 24/11/2026): pedidos, vínculos e anúncios; fora da
+// tela Marketplaces, só as vendas que vieram dos marketplaces.
+test('perfil Marketplace: pedidos, vínculos e anúncios, sem canal, estoque, venda nem clientes da loja', async () => {
+  ok(
+    await req('POST', '/api/collections/users/records', {
+      email: 'marketplace@newway.dev', name: 'Marketplace', password: PASSWORD, passwordConfirm: PASSWORD, profile: 'marketplace',
+    }),
+    'usuário marketplace',
+  )
+  const mk = (await api('POST', '/api/collections/users/auth-with-password', { body: { identity: 'marketplace@newway.dev', password: PASSWORD } })).json.token
+
+  // Uma venda da loja, que ele não pode ver.
+  const counter = await req('POST', '/api/collections/products/records', { status: 'ativo', name: 'Só na loja', sku: 'TST-LOJA', sale_price: 100, cost_price: 50 })
+  ok(counter, 'produto da loja')
+  ok(await req('POST', '/api/collections/stock_items/records', { product: counter.json.id, store: ctx.cj, quantity: 2 }), 'estoque')
+  const walkIn = await req('POST', '/api/collections/customers/records', { name: 'Cliente da Loja', phone: '+5541988887777' })
+  ok(walkIn, 'cliente da loja')
+  const storeSale = await req('POST', '/backend/v1/sales', {
+    idempotency_key: randomUUID(), store: ctx.cj, customer: walkIn.json.id,
+    items: [{ product: counter.json.id, quantity: 1, discount: 0 }], payments: [{ method: 'pix', amount: 100 }],
+  })
+  assert.equal(storeSale.status, 201, storeSale.text)
+
+  for (const [method, url, body] of [
+    ['GET', '/backend/v1/marketplaces'],
+    ['GET', '/backend/v1/marketplaces/orders'],
+    ['POST', `/backend/v1/marketplaces/channels/${ctx.channel}/import`],
+    ['GET', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`],
+    ['POST', `/backend/v1/marketplaces/channels/${ctx.channel}/listings`],
+    ['POST', `/backend/v1/marketplaces/listings/${ctx.listing}/pausar`],
+    ['POST', `/backend/v1/marketplaces/listings/${ctx.listing}/publicar`],
+    ['POST', '/backend/v1/marketplaces/links', { bling_product_id: '888', bling_code: 'NW-888', bling_name: 'Produto NW-888', product: ctx.helmet }],
+  ]) {
+    const res = await req(method, url, body, mk)
+    assert.equal(res.status, 200, `${url}: ${res.text}`)
+  }
+  for (const [method, url] of [
+    ['GET', '/backend/v1/marketplaces/discover'],
+    ['POST', '/backend/v1/marketplaces/channels'],
+    ['GET', `/backend/v1/marketplaces/channels/${ctx.channel}/stock`],
+    ['POST', `/backend/v1/marketplaces/channels/${ctx.channel}/stock`],
+    ['GET', `/backend/v1/marketplaces/channels/${ctx.channel}/check`],
+    ['POST', '/backend/v1/sales'],
+    ['POST', '/backend/v1/stock/manual'],
+    ['POST', '/backend/v1/products/import'],
+  ]) {
+    assert.equal((await req(method, url, method === 'GET' ? undefined : {}, mk)).status, 403, url)
+  }
+
+  // Vendas: só as dos marketplaces, com os itens e sem o custo.
+  const sales = (await req('GET', '/api/collections/sales/records?perPage=200', undefined, mk)).json.items
+  assert.ok(sales.length >= 3, 'vê as vendas dos marketplaces')
+  assert.ok(sales.every((s) => s.channel), 'só vendas com canal')
+  assert.ok(!sales.some((s) => s.id === storeSale.json.id), 'não vê a venda da loja')
+  const itemsRes = await req('GET', `/api/collections/sale_items/records?filter=${encodeURIComponent(`sale = '${sales[0].id}'`)}`, undefined, mk)
+  assert.ok(itemsRes.json.items.length > 0, 'vê os itens')
+  assert.ok(!/cost/.test(itemsRes.text), 'sem o custo')
+  assert.equal((await req('GET', `/api/collections/sales/records/${storeSale.json.id}`, undefined, mk)).status, 404)
+
+  // Clientes: só o comprador de uma venda de marketplace, e sem cadastrar.
+  assert.equal((await req('GET', '/api/collections/customers/records', undefined, mk)).json.items.length, 0, 'não lista clientes')
+  assert.equal((await req('GET', `/api/collections/customers/records/${sales[0].customer}`, undefined, mk)).status, 200, 'vê o comprador')
+  assert.equal((await req('GET', `/api/collections/customers/records/${walkIn.json.id}`, undefined, mk)).status, 404, 'não vê o cliente da loja')
+  assert.ok((await req('POST', '/api/collections/customers/records', { name: 'Novo', phone: '+5541977776666' }, mk)).status >= 400, 'não cadastra')
+
+  // Os outros perfis continuam como antes.
+  assert.equal((await req('GET', '/api/collections/customers/records', undefined, ctx.seller)).json.items.length > 0, true, 'o vendedor lista clientes')
 })
 
 test('a rotina de 5 minutos importa os pedidos novos de todos os canais ligados', async () => {

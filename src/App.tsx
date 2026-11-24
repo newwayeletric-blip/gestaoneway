@@ -55,6 +55,7 @@ function RootRedirect() {
   const { user, profile } = useAuth()
   if (!user) return <Navigate to="/login" replace />
   if (profile === 'admin') return <Navigate to="/dashboard" replace />
+  if (profile === 'marketplace') return <Navigate to="/marketplaces" replace />
   return <Navigate to="/meu-painel" replace />
 }
 
@@ -95,15 +96,26 @@ export default function App() {
                       <Route path="/relatorios" element={<Reports />} />
                       <Route path="/auditoria" element={<AuditLogs />} />
                       <Route path="/produtos/importar" element={<ProductImport />} />
-                      <Route path="/marketplaces" element={<Marketplaces />} />
                       <Route path="/usuarios" element={<UsersList />} />
                       <Route path="/configuracoes" element={<Settings />} />
                       <Route path="/estoque/transferencias" element={<Stock />} />
                     </Route>
 
-                    {/* ADMIN E GERENTE: vendas da loja (o gerente vê só as lojas dele) */}
-                    <Route element={<ProtectedRoute requiredProfile={['admin', 'gerente']} />}>
+                    {/* ADMIN E MARKETPLACE: pedidos e anúncios (o canal e o estoque, só o admin) */}
+                    <Route element={<ProtectedRoute requiredProfile={['admin', 'marketplace']} />}>
+                      <Route path="/marketplaces" element={<Marketplaces />} />
+                    </Route>
+
+                    {/* ADMIN E GERENTE: vendas da loja (o gerente vê só as lojas dele; o
+                        perfil Marketplace, só as vendas dos marketplaces, pelas regras da API) */}
+                    <Route
+                      element={
+                        <ProtectedRoute requiredProfile={['admin', 'gerente', 'marketplace']} />
+                      }
+                    >
                       <Route path="/vendas" element={<SalesList mySalesOnly={false} />} />
+                    </Route>
+                    <Route element={<ProtectedRoute requiredProfile={['admin', 'gerente']} />}>
                       <Route path="/series" element={<SerialNumbers />} />
                     </Route>
 
@@ -121,13 +133,20 @@ export default function App() {
                     </Route>
 
                     {/* COMMON ACCESSIBLE ROUTES (with internal role checks) */}
-                    <Route path="/vendas/nova" element={<NewSale />} />
                     <Route path="/vendas/:id" element={<SaleDetail />} />
-                    <Route path="/produtos" element={<Products />} />
-                    <Route path="/produtos/:id" element={<Products />} />
-                    <Route path="/estoque" element={<Stock />} />
-                    <Route path="/clientes" element={<CustomersList />} />
-                    <Route path="/clientes/:id" element={<CustomerDetail />} />
+                    {/* Fora do perfil Marketplace, que só cuida dos marketplaces */}
+                    <Route
+                      element={
+                        <ProtectedRoute requiredProfile={['admin', 'gerente', 'vendedor']} />
+                      }
+                    >
+                      <Route path="/vendas/nova" element={<NewSale />} />
+                      <Route path="/produtos" element={<Products />} />
+                      <Route path="/produtos/:id" element={<Products />} />
+                      <Route path="/estoque" element={<Stock />} />
+                      <Route path="/clientes" element={<CustomersList />} />
+                      <Route path="/clientes/:id" element={<CustomerDetail />} />
+                    </Route>
                   </Route>
                 </Route>
 
