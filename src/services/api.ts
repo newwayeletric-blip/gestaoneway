@@ -696,6 +696,15 @@ export const StockService = {
     return res.items
   },
 
+  // Ficha do produto: todas as movimentações, da mais antiga para a mais nova.
+  async getProductMovements(productId: string): Promise<StockMovementRecord[]> {
+    return await pb.collection('stock_movements').getFullList<StockMovementRecord>({
+      filter: `product = '${productId}'`,
+      sort: 'created',
+      expand: 'store',
+    })
+  },
+
   async getMovements(storeId?: string, perPage = 30) {
     const filter = storeId ? `store = '${storeId}'` : ''
     return await this.listMovements(filter, 1, perPage)

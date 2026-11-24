@@ -4,6 +4,7 @@ import { ProductsService, StockService } from '@/services/api'
 import type { ProductRecord, CategoryRecord } from '@/types'
 import { formatBRL } from '@/lib/formatters'
 import { matchProducts } from '@/components/ProductPicker'
+import ProductPurchases from '@/components/ProductPurchases'
 import {
   Package,
   PlusCircle,
@@ -15,6 +16,7 @@ import {
   QrCode,
   FileUp,
   Pencil,
+  History,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -67,6 +69,8 @@ export default function Products() {
   const [pDiscountLimit, setPDiscountLimit] = useState('')
   // NCM da nota fiscal; em branco usa o padrão da aba Bling (8711.60.00).
   const [pNcm, setPNcm] = useState('')
+  // Ficha de compras e custo do produto (admin).
+  const [historyProduct, setHistoryProduct] = useState<ProductRecord | null>(null)
 
   const { toast } = useToast()
 
@@ -342,20 +346,39 @@ export default function Products() {
                       ? `Desconto até ${prod.discount_limit_pct ?? 0}% (próprio)`
                       : 'Desconto: limite geral'}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => openEdit(prod)}
-                  >
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setHistoryProduct(prod)}
+                    >
+                      <History className="h-3.5 w-3.5 mr-1" /> Compras
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => openEdit(prod)}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                    </Button>
+                  </div>
                 </div>
               )}
             </Card>
           )
         })}
       </div>
+
+      {isAdmin && (
+        <ProductPurchases
+          product={historyProduct}
+          stores={stores}
+          stockByStore={historyProduct ? stockMap[historyProduct.id] || {} : {}}
+          onClose={() => setHistoryProduct(null)}
+        />
+      )}
 
       {/* MODAL NOVO PRODUTO (ADMIN ONLY) */}
       {isAdmin && (

@@ -188,7 +188,11 @@ export default function Reports() {
         ])
         setStores(stList)
         setProducts(prList)
-        setSellers(uList.filter((u) => u.profile === 'vendedor' || u.profile === 'gerente' || u.profile === 'admin'))
+        setSellers(
+          uList.filter(
+            (u) => u.profile === 'vendedor' || u.profile === 'gerente' || u.profile === 'admin',
+          ),
+        )
         setCategoriesData(catList)
       } catch (err) {
         console.error('Error fetching lookups:', err)
@@ -467,11 +471,13 @@ export default function Reports() {
         csvContent += `"${p.expand?.sale?.number || ''}";"${p.expand?.sale?.expand?.customer?.name || ''}";"${p.expand?.sale?.expand?.store?.name || ''}";"${p.method}";"${p.amount}";"${p.confirmed ? 'Sim' : 'Nao'}";"${formatDateBR(p.created)}"\r\n`
       })
     } else if (reportType === 'estoque') {
-      csvContent += 'Produto;SKU;Unidade;Quantidade;Estoque_Minimo;Situacao\r\n'
+      csvContent +=
+        'Produto;SKU;Unidade;Quantidade;Estoque_Minimo;Situacao;Custo_Medio;Valor_em_Estoque\r\n'
       currentFilteredData.forEach((st: StockItemRecord) => {
         const minStock = st.expand?.product?.min_stock || 0
         const status = st.quantity <= minStock ? 'BAIXO' : 'REGULAR'
-        csvContent += `"${st.expand?.product?.name || ''}";"${st.expand?.product?.sku || ''}";"${st.expand?.store?.name || ''}";"${st.quantity}";"${minStock}";"${status}"\r\n`
+        const cost = st.expand?.product?.cost_price || 0
+        csvContent += `"${st.expand?.product?.name || ''}";"${st.expand?.product?.sku || ''}";"${st.expand?.store?.name || ''}";"${st.quantity}";"${minStock}";"${status}";"${cost}";"${st.quantity * cost}"\r\n`
       })
     } else if (reportType === 'movimentacoes') {
       csvContent += 'Data;Tipo;Produto;Unidade;Quantidade;Usuario;Motivo\r\n'
@@ -1008,12 +1014,15 @@ export default function Reports() {
                   <th className="py-2.5 px-3 font-semibold text-center">Saldo em Estoque</th>
                   <th className="py-2.5 px-3 font-semibold text-center">Estoque Mínimo</th>
                   <th className="py-2.5 px-3 font-semibold text-center">Situação</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Custo Médio</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Valor em Estoque</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {currentFilteredData.map((st: StockItemRecord) => {
                   const min = st.expand?.product?.min_stock || 0
                   const isLow = st.quantity <= min
+                  const cost = st.expand?.product?.cost_price || 0
                   return (
                     <tr key={st.id} className="hover:bg-gray-50/50">
                       <td className="py-2 px-3 font-medium text-gray-900">
@@ -1033,17 +1042,49 @@ export default function Reports() {
                           {isLow ? 'Estoque Baixo' : 'Normal'}
                         </Badge>
                       </td>
+                      <td className="py-2 px-3 text-right whitespace-nowrap text-muted-foreground">
+                        {cost ? formatBRL(cost) : 'N/D'}
+                      </td>
+                      <td className="py-2 px-3 text-right whitespace-nowrap font-semibold">
+                        {formatBRL(st.quantity * cost)}
+                      </td>
                     </tr>
                   )
                 })}
                 {currentFilteredData.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-gray-400">
+                    <td colSpan={9} className="py-8 text-center text-gray-400">
                       Nenhum item em estoque para os filtros selecionados.
                     </td>
                   </tr>
                 )}
               </tbody>
+              {currentFilteredData.length > 0 && (
+                <tfoot className="border-t-2 border-gray-200 bg-gray-50 font-bold">
+                  <tr>
+                    <td className="py-2.5 px-3" colSpan={4}>
+                      Total (custo médio de cada produto)
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {currentFilteredData.reduce(
+                        (t: number, st: StockItemRecord) => t + st.quantity,
+                        0,
+                      )}{' '}
+                      un.
+                    </td>
+                    <td colSpan={3} />
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap text-[#0A8F5C]">
+                      {formatBRL(
+                        currentFilteredData.reduce(
+                          (t: number, st: StockItemRecord) =>
+                            t + st.quantity * (st.expand?.product?.cost_price || 0),
+                          0,
+                        ),
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
