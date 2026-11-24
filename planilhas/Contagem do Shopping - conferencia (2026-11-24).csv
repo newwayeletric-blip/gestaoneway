@@ -1,0 +1,41 @@
+﻿marca;modelo_na_contagem;qtd_shopping;sku;produto_no_sistema;matriz_hoje;matriz_depois;observacao
+Navee;V25 Pro (6 lacrados + 1 montado);7;NW-021;Navee V25 Pro;2;0;a Matriz tinha só 2: o total sobe 5
+Navee;UT5 Ultra X;1;NW-050;Navee UT5-Ultra;3;2;no sistema: UT5-Ultra
+Navee;UT5 Max;1;NW-049;Navee UT5 Max;4;3;
+Navee;NT5 Ultra X;1;NW-048;Navee NT5 Ultra X;11;10;
+Navee;NT5 Max;1;NW-047;Navee NT5 Max;5;4;
+Navee;XT5 Pro;1;NW-013;Navee XT5 Pro;5;4;
+Navee;ST3 Pro 1.350 W (1 com banco da loja, 1 sem);2;NW-020;Navee ST3 Pro;11;9;
+Navee;ST3 Padrão 1.000 W (sem banco);1;NW-046;Navee ST3 1000W;8;7;
+Navee;WD-B04 Pro (2 baterias);2;NW-WDB04PRO;Navee WDB04 Pro;17;15;
+Navee;WD-B04 Padrão (1 bateria);1;NW-051;Navee WDB04;3;2;
+Segway;GT3;1;NW-029;Segway GT3;2;1;
+Segway;ZT3;1;NW-030;Segway ZT3;2;1;
+Segway;F3 Pro;1;NW-F3PRO;Segway Ninebot F3 Pro;0;0;a Matriz tinha só 0: o total sobe 1
+Segway;Max G2;1;NW-MAXG2;Segway Max G2;;;produto novo (o dono: é outro modelo, não o Max G3)
+Segway;C2 Plus (infantil);1;NW-C2PLUS;Segway Ninebot C2 Plus;;;produto novo (o dono: é outro modelo, não o C2 Pro)
+Honey Whale;T4A;1;NW-040;Honeywhale T4a;8;7;
+Honey Whale;T4BN;1;NW-003;Honeywhale T4b-n;9;8;
+Honey Whale;T4D;1;NW-031;Honeywhale T4D;7;6;
+Honey Whale;M2 Max B (com banco);1;NW-004;Honeywhale M2 Max-b;9;8;
+Honey Whale;M2 Max sem banco (1 preto e azul, 1 rosa);2;NW-M2MAX;Patinete Elétrico M2 Max 500W;9;7;"no produto geral, que tem o saldo; as cores separadas estão com 0"
+Honey Whale;S2 Max rosa;1;NW-025;Honeywhale S2 Max Pink;2;1;
+Honey Whale;E9 Max N;1;NW-041;Honeywhale E9max-n;1;0;
+Honey Whale;GT1 Mini;1;NW-018;Honeywhale GT1 Mini;11;10;
+Honey Whale;G2 Pro;1;NW-002;Honeywhale G2 Pro;8;7;
+Honey Whale;G3 Pro;1;NW-014;Honeywhale G3 Pro;11;10;
+Honey Whale;G4 Max;1;NW-005;Honeywhale G4 Max;17;16;
+Honey Whale;H4;1;NW-001;Patinete Elétrico H4 2400W;3;2;
+Honey Whale;T8 Max;1;NW-010;Honeywhale T8 Max;4;3;
+Honey Whale;JL006 (infantil);1;NW-JL006;Honeywhale JL006;0;0;a Matriz tinha só 0: o total sobe 1
+Honey Whale;Bike BK09;1;NW-037;Honeywhale BK09 Cross 2192W;4;3;
+Honey Whale;Bike S6S;1;NW-019;Bicicleta Elétrica S6-S 750W;6;5;
+Honey Whale;Bike S6S Pro;1;NW-S6PROS;Bicicleta Elétrica S6 Pro-S;1;0;no sistema: S6 Pro-S
+Honey Whale;Bike BW02;1;NW-038;Honeywhale BW02;2;1;
+Honey Whale;Bike F6;1;NW-F6;F6;2;1;
+Honey Whale;Bike F6 Pro S;1;NW-015;F6-PRO S;3;2;
+Honey Whale;Motinha MT4 (1 laranja e preta, 1 prata e preta);2;NW-036;Honeywhale MT4 Off-Road;6;4;
+Dualtron;Togo;1;NW-016;Dualtron Togo Limited;2;1;
+Dualtron;Roveron;1;?;;;;"PENDENTE: o dono disse que NW-042 (Rovoron Motor Duplo) e NW-ROVORON-R7 são modelos diferentes; falta saber qual está no Shopping"
+New Way;Scooter elétrica New Way;4;NW-SCOOTER;Scooter Elétrica New Way;;;produto novo, sem preço
+New Way;Kart infantil New Way;1;NW-KART-INF;Kart Elétrico Infantil;0;0;a Matriz tinha só 0: o total sobe 1
