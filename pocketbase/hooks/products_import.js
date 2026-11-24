@@ -2,17 +2,22 @@
  * Importação de produtos por planilha (dono, 11/11/2026): o sistema é o
  * cadastro mestre; a planilha revisada junta o catálogo (nome, marca,
  * especificações, preço, fotos) e o Bling (SKU, custo). Só o administrador.
- * - POST /backend/v1/products/import { rows, dry_run }: cada linha cria ou
- *   atualiza o produto da organização pelo SKU (categoria criada se faltar).
- *   dry_run devolve o que aconteceria, sem gravar. Um registro na auditoria
- *   resume a importação.
+ * - POST /backend/v1/products/import { rows, dry_run, store? }: cada linha
+ *   cria ou atualiza o produto da organização pelo SKU (categoria criada se
+ *   faltar). dry_run devolve o que aconteceria, sem gravar. Um registro na
+ *   auditoria resume a importação.
+ * - Estoque (dono, 24/11/2026: o estoque real está no Bling): a coluna
+ *   "estoque" é o saldo contado na loja escolhida (store), como o Ajuste da
+ *   tela Estoque. A movimentação guarda a diferença; importar a mesma planilha
+ *   de novo não dobra o saldo. Coluna vazia não mexe no estoque.
  * - POST /backend/v1/products/photo-from-url { product, url }: baixa a foto
  *   para o produto. Só de endereços conhecidos (o catálogo; a variável
  *   PRODUCT_PHOTO_SOURCES troca a lista, separada por vírgula), para o
  *   servidor não buscar arquivos em qualquer lugar.
  * Linha: { sku, nome, marca?, categoria?, descricao?, preco_venda?, custo?,
  *          pede_chassi? ("sim"/"não"), limite_desconto? (% próprio do produto),
- *          ncm? (8 números, para a NF-e; vazio usa o padrão da aba Bling) }
+ *          ncm? (8 números, para a NF-e; vazio usa o padrão da aba Bling),
+ *          status? ("ativo"/"inativo"), estoque? (inteiro, 0 ou mais) }
  */
 routerAdd('POST', '/backend/v1/products/import', (e) => {
   const auth = e.auth
@@ -41,6 +46,45 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
     else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '')
     const n = Number(s)
     return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN
+  }
+
+  // Loja do estoque: só a da própria organização, e não em mês encerrado.
+  let store = null
+  if (text(body.store)) {
+    try {
+      store = $app.findRecordById('stores', text(body.store))
+    } catch (_) {}
+    if (!store || store.getString('org') !== orgId)
+      throw new BadRequestError('Loja não encontrada.')
+    const now = new Date()
+    const closings = $app.findRecordsByFilter(
+      'monthly_closings',
+      "year = {:year} && month = {:month} && status = 'fechado' && org = {:org} && (store = {:store} || store = '')",
+      '',
+      1,
+      0,
+      { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, org: orgId, store: store.id },
+    )
+    if (closings.length > 0) {
+      throw new BadRequestError(
+        'Operação bloqueada: não é permitido lançar movimentações de estoque em mês encerrado pelo Fechamento Mensal.',
+      )
+    }
+  }
+  const stockRow = (app, productId) => {
+    const rows = app.findRecordsByFilter(
+      'stock_items',
+      "store = {:store} && product = {:product} && variant = ''",
+      '',
+      1,
+      0,
+      { store: store.id, product: productId },
+    )
+    return rows.length > 0 ? rows[0] : null
+  }
+  const storeStock = (productId) => {
+    const row = stockRow($app, productId)
+    return row ? row.getFloat('quantity') : 0
   }
 
   const results = []
@@ -73,6 +117,13 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
       ncmDigits.length === 8
         ? ncmDigits.slice(0, 4) + '.' + ncmDigits.slice(4, 6) + '.' + ncmDigits.slice(6)
         : ''
+    const status = text(r.status).toLowerCase()
+    if (status && ['ativo', 'inativo'].indexOf(status) === -1)
+      errors.push('"status" deve ser ativo ou inativo')
+    const stockText = text(r.estoque)
+    const stock = stockText ? Number(stockText) : null
+    if (stock !== null && !(Number.isInteger(stock) && stock >= 0))
+      errors.push('"estoque" deve ser um número inteiro, 0 ou mais')
     if (sku) seen[sku] = seen[sku] || line
 
     let existing = null
@@ -91,7 +142,10 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
       errors: errors,
       product: existing ? existing.id : '',
       has_photo: !!existing && !!existing.getString('photo'),
+      stock: errors.length ? null : stock,
+      stock_before: null,
     }
+    if (store && result.stock !== null) result.stock_before = existing ? storeStock(existing.id) : 0
     results.push(result)
     if (errors.length === 0) {
       plan.push({
@@ -106,6 +160,8 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         chassi: chassi,
         discountLimit: discountLimit,
         ncm: ncm,
+        status: status,
+        stock: stock,
       })
     }
   }
@@ -114,6 +170,13 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
     criar: results.filter((r) => r.action === 'criar').length,
     atualizar: results.filter((r) => r.action === 'atualizar').length,
     erro: results.filter((r) => r.action === 'erro').length,
+    estoque: results.filter(
+      (r) => r.stock !== null && (r.stock_before === null || r.stock !== r.stock_before),
+    ).length,
+  }
+  const withStock = plan.some((p) => p.stock !== null)
+  if (!dryRun && withStock && !store) {
+    throw new BadRequestError('A planilha tem a coluna "estoque": escolha a loja do estoque.')
   }
   if (dryRun) return e.json(200, { dry_run: true, summary: summary, results: results })
 
@@ -161,9 +224,41 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         rec.set('discount_limit_pct', p.discountLimit)
       }
       if (p.ncm) rec.set('ncm', p.ncm)
+      if (p.status) rec.set('status', p.status)
       tx.save(rec)
       p.result.product = rec.id
+
+      if (p.stock === null) continue
+      let row = stockRow(tx, rec.id)
+      if (!row) {
+        row = new Record(tx.findCollectionByNameOrId('stock_items'))
+        row.set('org', orgId)
+        row.set('store', store.id)
+        row.set('product', rec.id)
+        row.set('variant', '')
+        row.set('quantity', 0)
+      }
+      const current = row.getFloat('quantity')
+      p.result.stock_before = current
+      const delta = p.stock - current
+      if (delta === 0) continue
+      row.set('quantity', p.stock)
+      tx.save(row)
+      const mv = new Record(tx.findCollectionByNameOrId('stock_movements'))
+      mv.set('org', orgId)
+      mv.set('type', 'ajuste')
+      mv.set('product', rec.id)
+      mv.set('store', store.id)
+      mv.set('quantity', delta)
+      mv.set('date', new DateTime())
+      mv.set('user', auth.id)
+      mv.set('reason', 'Importação de produtos: saldo da planilha')
+      mv.set('source_ref', 'IMPORTACAO')
+      tx.save(mv)
     }
+    summary.estoque = plan.filter(
+      (p) => p.stock !== null && p.result.stock_before !== p.stock,
+    ).length
 
     const audit = new Record(tx.findCollectionByNameOrId('audit_logs'))
     audit.set('org', orgId)
@@ -179,7 +274,10 @@ routerAdd('POST', '/backend/v1/products/import', (e) => {
         summary.atualizar +
         ' atualizados, ' +
         summary.erro +
-        ' com erro',
+        ' com erro' +
+        (store
+          ? '; estoque de ' + summary.estoque + ' produto(s) na loja ' + store.getString('name')
+          : ''),
     )
     audit.set('new_values', summary)
     audit.set('ip_address', e.realIP())

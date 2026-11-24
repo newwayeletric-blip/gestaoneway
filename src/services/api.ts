@@ -439,6 +439,8 @@ export interface ProductImportRow {
   pede_chassi?: string
   limite_desconto?: string
   ncm?: string
+  status?: string
+  estoque?: string
 }
 
 export interface ProductImportResult {
@@ -449,19 +451,21 @@ export interface ProductImportResult {
   errors: string[]
   product: string
   has_photo: boolean
+  stock: number | null
+  stock_before: number | null
 }
 
 export interface ProductImportResponse {
   dry_run: boolean
-  summary: { criar: number; atualizar: number; erro: number }
+  summary: { criar: number; atualizar: number; erro: number; estoque: number }
   results: ProductImportResult[]
 }
 
 export const ProductImportService = {
-  async run(rows: ProductImportRow[], dryRun: boolean): Promise<ProductImportResponse> {
+  async run(rows: ProductImportRow[], dryRun: boolean, store = ''): Promise<ProductImportResponse> {
     return await pb.send<ProductImportResponse>('/backend/v1/products/import', {
       method: 'POST',
-      body: { rows, dry_run: dryRun },
+      body: { rows, dry_run: dryRun, store },
     })
   },
 

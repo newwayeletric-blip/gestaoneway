@@ -17,8 +17,8 @@ let api
 let photos
 const ctx = {}
 
-const run = (token, rows, dryRun = false) =>
-  api('POST', '/backend/v1/products/import', { token, body: { rows, dry_run: dryRun } })
+const run = (token, rows, dryRun = false, store = '') =>
+  api('POST', '/backend/v1/products/import', { token, body: { rows, dry_run: dryRun, store } })
 const bySku = async (sku) =>
   (
     await api('GET', `/api/collections/products/records?expand=category&filter=${encodeURIComponent(`sku = '${sku}'`)}`, {
@@ -53,6 +53,7 @@ before(async () => {
   assert.equal(setup.status, 200, setup.text)
   ctx.admin = setup.json.token
   const stores = (await api('GET', '/api/collections/stores/records', { token: ctx.admin })).json.items
+  ctx.store = stores[0].id
   await api('POST', '/api/collections/users/records', {
     token: ctx.admin,
     body: { email: 'vendedor@newway.dev', name: 'Vendedor', password: PASSWORD, passwordConfirm: PASSWORD, profile: 'vendedor', stores: [stores[0].id] },
@@ -78,7 +79,7 @@ test('a prévia aponta os erros e não grava nada', async () => {
     true,
   )
   assert.equal(res.status, 200, res.text)
-  assert.deepEqual(res.json.summary, { criar: 1, atualizar: 0, erro: 4 })
+  assert.deepEqual(res.json.summary, { criar: 1, atualizar: 0, erro: 4, estoque: 0 })
   assert.deepEqual(
     res.json.results.map((r) => [r.line, r.action, r.errors.join(',')]),
     [
@@ -95,7 +96,7 @@ test('a prévia aponta os erros e não grava nada', async () => {
 test('cria pelo SKU, com preço brasileiro, categoria nova e auditoria', async () => {
   const res = await run(ctx.admin, [scooter, helmet])
   assert.equal(res.status, 200, res.text)
-  assert.deepEqual(res.json.summary, { criar: 2, atualizar: 0, erro: 0 })
+  assert.deepEqual(res.json.summary, { criar: 2, atualizar: 0, erro: 0, estoque: 0 })
   const g4 = await bySku('NW-TESTE-G4')
   assert.equal(g4.name, 'Honeywhale G4 Max')
   assert.equal(g4.brand, 'Honeywhale')
@@ -125,7 +126,7 @@ test('importar de novo atualiza; preço vazio mantém o atual', async () => {
     { ...helmet, preco_venda: '' },
   ])
   assert.equal(res.status, 200, res.text)
-  assert.deepEqual(res.json.summary, { criar: 0, atualizar: 2, erro: 0 })
+  assert.deepEqual(res.json.summary, { criar: 0, atualizar: 2, erro: 0, estoque: 0 })
   const g4 = await bySku('NW-TESTE-G4')
   assert.equal(g4.id, ctx.g4)
   assert.equal(g4.sale_price, 10499)
@@ -137,6 +138,68 @@ test('importar de novo atualiza; preço vazio mantém o atual', async () => {
     token: ctx.admin,
   })
   assert.equal(cats.json.items.length, 1, 'a categoria não duplica')
+})
+
+test('estoque: o saldo da loja vira o da planilha, sem dobrar ao importar de novo', async () => {
+  const stockOf = async (sku) => {
+    const product = await bySku(sku)
+    const filter = encodeURIComponent(`product = '${product.id}' && store = '${ctx.store}'`)
+    const items = (await api('GET', `/api/collections/stock_items/records?filter=${filter}`, { token: ctx.admin })).json.items
+    const moves = (
+      await api('GET', `/api/collections/stock_movements/records?sort=created&filter=${filter}`, { token: ctx.admin })
+    ).json.items
+    return { qty: items.reduce((t, i) => t + i.quantity, 0), moves }
+  }
+
+  const bad = await run(ctx.admin, [{ ...scooter, estoque: '-1' }, { ...helmet, estoque: '2,5' }, { ...helmet, sku: 'NW-TESTE-X', status: 'parado' }], true)
+  assert.deepEqual(
+    bad.json.results.map((r) => r.errors.join(',')),
+    ['"estoque" deve ser um número inteiro, 0 ou mais', '"estoque" deve ser um número inteiro, 0 ou mais', '"status" deve ser ativo ou inativo'],
+  )
+  const noStore = await run(ctx.admin, [{ ...scooter, estoque: '5' }])
+  assert.equal(noStore.status, 400)
+  assert.match(noStore.json.message, /escolha a loja/)
+  assert.equal((await run(ctx.admin, [{ ...scooter, estoque: '5' }], true, 'naoexiste12345')).status, 400)
+
+  const preview = await run(ctx.admin, [{ ...scooter, estoque: '5' }, helmet, { sku: 'NW-TESTE-T4', nome: 'T4D', estoque: '2' }], true, ctx.store)
+  assert.equal(preview.status, 200, preview.text)
+  assert.deepEqual(
+    preview.json.results.map((r) => [r.sku, r.stock, r.stock_before]),
+    [
+      ['NW-TESTE-G4', 5, 0],
+      ['NW-TESTE-CAP', null, null],
+      ['NW-TESTE-T4', 2, 0],
+    ],
+  )
+  assert.equal(preview.json.summary.estoque, 2)
+  assert.equal((await stockOf('NW-TESTE-G4')).qty, 0, 'a prévia não grava')
+
+  const res = await run(ctx.admin, [{ ...scooter, estoque: '5' }, helmet, { sku: 'NW-TESTE-T4', nome: 'T4D', estoque: '2' }], false, ctx.store)
+  assert.equal(res.status, 200, res.text)
+  assert.deepEqual(res.json.summary, { criar: 1, atualizar: 2, erro: 0, estoque: 2 })
+  const g4 = await stockOf('NW-TESTE-G4')
+  assert.equal(g4.qty, 5)
+  assert.deepEqual(
+    g4.moves.map((m) => [m.type, m.quantity, m.source_ref]),
+    [['ajuste', 5, 'IMPORTACAO']],
+  )
+  assert.equal((await stockOf('NW-TESTE-T4')).qty, 2)
+  assert.equal((await stockOf('NW-TESTE-CAP')).qty, 0, 'sem a coluna, o estoque não muda')
+
+  const again = await run(ctx.admin, [{ ...scooter, estoque: '5' }], false, ctx.store)
+  assert.equal(again.json.summary.estoque, 0)
+  assert.equal((await stockOf('NW-TESTE-G4')).moves.length, 1, 'mesmo saldo: nenhuma movimentação nova')
+
+  const fewer = await run(ctx.admin, [{ ...scooter, estoque: '3', status: 'inativo' }], false, ctx.store)
+  assert.equal(fewer.status, 200, fewer.text)
+  const after3 = await stockOf('NW-TESTE-G4')
+  assert.equal(after3.qty, 3)
+  assert.deepEqual(after3.moves.at(-1).quantity, -2)
+  assert.equal((await bySku('NW-TESTE-G4')).status, 'inativo')
+  const audit = await api('GET', `/api/collections/audit_logs/records?sort=-created&filter=${encodeURIComponent("entity = 'products'")}`, {
+    token: ctx.admin,
+  })
+  assert.match(audit.json.items[0].reason, /estoque de 1 produto\(s\) na loja/)
 })
 
 test('foto só de endereço conhecido', async () => {

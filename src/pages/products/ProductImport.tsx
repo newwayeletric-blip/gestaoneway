@@ -7,6 +7,7 @@ import {
   type ProductImportRow,
 } from '@/services/api'
 import { decodeCsvFile, parseCsv } from '@/lib/csv'
+import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +16,7 @@ import { toast } from '@/hooks/use-toast'
 // Importação de produtos (admin): a planilha revisada pelo dono (catálogo +
 // Bling, salva como CSV) cria ou atualiza os produtos pelo SKU. Primeiro a
 // prévia do servidor, sem gravar; depois a importação e as fotos do catálogo.
+// Com a coluna "estoque", o saldo da loja escolhida passa a ser esse número.
 type Line = ProductImportRow & { foto_principal?: string; origem?: string; duvidas?: string }
 
 const COLUMNS = [
@@ -28,9 +30,13 @@ const COLUMNS = [
   'pede_chassi',
   'limite_desconto',
   'ncm',
+  'status',
+  'estoque',
 ] as const
 
 export default function ProductImport() {
+  const { stores } = useAuth()
+  const [store, setStore] = useState('')
   const [fileName, setFileName] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [preview, setPreview] = useState<ProductImportResponse | null>(null)
@@ -65,7 +71,7 @@ export default function ProductImport() {
       setFileName(file.name)
       setLines(parsed)
       setBusy('Conferindo a planilha...')
-      setPreview(await ProductImportService.run(toRows(parsed), true))
+      setPreview(await ProductImportService.run(toRows(parsed), true, store))
     } catch (err: any) {
       setLines([])
       toast({
@@ -86,15 +92,38 @@ export default function ProductImport() {
       return next
     })
 
+  // Trocar a loja refaz a prévia, para mostrar o saldo atual dela.
+  const changeStore = async (id: string) => {
+    setStore(id)
+    if (lines.length === 0) return
+    setBusy('Conferindo a planilha...')
+    try {
+      setPreview(await ProductImportService.run(toRows(lines), true, id))
+    } catch (err: any) {
+      toast({
+        title: 'Não foi possível conferir',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy('')
+    }
+  }
+
   const resultFor = (index: number) => preview?.results.find((r) => r.line === index + 2)
   // Linhas marcadas e sem erro; a resposta do servidor vem na mesma ordem.
   const valid = lines.filter((_, i) => !skipped.has(i + 2) && resultFor(i)?.action !== 'erro')
+  const hasStock = lines.some((l) => (l.estoque || '').trim() !== '')
 
   const handleImport = async () => {
     if (valid.length === 0) return
+    if (hasStock && !store) {
+      toast({ title: 'Escolha a loja do estoque', variant: 'destructive' })
+      return
+    }
     setBusy('Importando produtos...')
     try {
-      const res = await ProductImportService.run(toRows(valid), false)
+      const res = await ProductImportService.run(toRows(valid), false, store)
       let photos = 0
       let photoErrors = 0
       if (withPhotos) {
@@ -136,7 +165,8 @@ export default function ProductImport() {
         <h2 className="text-2xl font-bold tracking-tight text-[#111111]">Importar produtos</h2>
         <p className="text-sm text-gray-500">
           Suba a planilha revisada (CSV). Cada linha cria o produto ou atualiza o que já tem o mesmo
-          código (SKU). O estoque não muda: lance a entrada de cada loja em Estoque.
+          código (SKU). Se a planilha tiver a coluna &quot;estoque&quot;, o saldo da loja escolhida
+          passa a ser esse número (como uma contagem); sem a coluna, o estoque não muda.
         </p>
       </div>
 
@@ -162,11 +192,16 @@ export default function ProductImport() {
               <CheckCircle2 className="h-5 w-5" /> Importação concluída
             </CardTitle>
             <CardDescription>
-              {done.summary.criar} produto(s) criado(s), {done.summary.atualizar} atualizado(s).{' '}
-              {withPhotos && `${done.photos} foto(s) baixada(s)`}
-              {done.photoErrors > 0 &&
-                `, ${done.photoErrors} foto(s) não baixaram (dá para importar de novo)`}
+              {done.summary.criar} produto(s) criado(s), {done.summary.atualizar} atualizado(s)
+              {done.summary.estoque > 0 &&
+                `, estoque de ${done.summary.estoque} produto(s) lançado`}
               .
+              {withPhotos &&
+                ` ${done.photos} foto(s) baixada(s)${
+                  done.photoErrors > 0
+                    ? `, ${done.photoErrors} foto(s) não baixaram (dá para importar de novo)`
+                    : ''
+                }.`}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -182,6 +217,30 @@ export default function ProductImport() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {hasStock && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm">
+                <label htmlFor="importStore" className="font-medium text-amber-900">
+                  Loja do estoque:
+                </label>
+                <select
+                  id="importStore"
+                  value={store}
+                  disabled={!!busy}
+                  onChange={(e) => changeStore(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Escolha a loja</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-amber-800">
+                  O saldo desta loja passa a ser o número da coluna &quot;estoque&quot;.
+                </span>
+              </div>
+            )}
             <div className="max-h-[520px] overflow-auto rounded-md border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted text-left text-xs font-medium uppercase text-muted-foreground">
@@ -194,6 +253,7 @@ export default function ProductImport() {
                     <th className="px-3 py-2 text-right">Preço</th>
                     <th className="px-3 py-2 text-right">Custo</th>
                     <th className="px-3 py-2 text-center">Chassi</th>
+                    {hasStock && <th className="px-3 py-2 text-right">Estoque</th>}
                     <th className="px-3 py-2 text-center">Foto</th>
                   </tr>
                 </thead>
@@ -223,9 +283,16 @@ export default function ProductImport() {
                               {r?.errors.join('; ')}
                             </span>
                           ) : (
-                            <Badge variant="outline" className="text-[10px]">
-                              {r?.action === 'atualizar' ? 'atualizar' : 'novo'}
-                            </Badge>
+                            <span className="inline-flex gap-1">
+                              <Badge variant="outline" className="text-[10px]">
+                                {r?.action === 'atualizar' ? 'atualizar' : 'novo'}
+                              </Badge>
+                              {(l.status || '').trim().toLowerCase() === 'inativo' && (
+                                <Badge variant="outline" className="text-[10px] text-gray-500">
+                                  inativo
+                                </Badge>
+                              )}
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">{l.sku}</td>
@@ -237,6 +304,15 @@ export default function ProductImport() {
                         <td className="px-3 py-2 text-right text-xs">{l.preco_venda || '-'}</td>
                         <td className="px-3 py-2 text-right text-xs">{l.custo || '-'}</td>
                         <td className="px-3 py-2 text-center text-xs">{l.pede_chassi}</td>
+                        {hasStock && (
+                          <td className="whitespace-nowrap px-3 py-2 text-right text-xs">
+                            {r?.stock === null || r?.stock === undefined
+                              ? '-'
+                              : r.stock_before === null || r.stock_before === r.stock
+                                ? r.stock
+                                : `${r.stock_before} → ${r.stock}`}
+                          </td>
+                        )}
                         <td className="px-3 py-2 text-center">
                           {l.foto_principal ? (
                             <ImageDown className="inline h-4 w-4 text-gray-500" />
@@ -253,7 +329,7 @@ export default function ProductImport() {
             <div className="flex flex-wrap items-center gap-4">
               <Button
                 onClick={handleImport}
-                disabled={!!busy || importable === 0}
+                disabled={!!busy || importable === 0 || (hasStock && !store)}
                 className="bg-[#0A8F5C] text-white hover:bg-[#087A4D]"
               >
                 Importar {importable} produto(s)
