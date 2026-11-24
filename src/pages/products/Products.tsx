@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ProductsService, StockService } from '@/services/api'
 import type { ProductRecord, CategoryRecord } from '@/types'
 import { formatBRL } from '@/lib/formatters'
+import { matchProducts } from '@/components/ProductPicker'
 import {
   Package,
   PlusCircle,
@@ -194,14 +195,15 @@ export default function Products() {
     }
   }
 
-  const filtered = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase()) ||
-      p.brand?.toLowerCase().includes(search.toLowerCase())
-    const matchesCat = selectedCategory ? p.category === selectedCategory : true
-    return matchesSearch && matchesCat
-  })
+  // Cadastro novo: o nome digitado procura no catálogo, para dar entrada no
+  // produto que já existe em vez de criar outro igual.
+  const sameName =
+    !editingId && pName.trim().length >= 2 ? matchProducts(products, pName).slice(0, 6) : []
+  const totalStock = (id: string) => Object.values(stockMap[id] || {}).reduce((t, q) => t + q, 0)
+
+  const filtered = matchProducts(products, search).filter((p) =>
+    selectedCategory ? p.category === selectedCategory : true,
+  )
 
   return (
     <div className="space-y-6">
@@ -218,7 +220,7 @@ export default function Products() {
         </div>
 
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link to="/produtos/importar">
                 <FileUp className="mr-2 h-4 w-4" /> Importar planilha
@@ -299,7 +301,9 @@ export default function Products() {
                     return (
                       <div key={st.id} className="flex justify-between items-center">
                         <span className="text-gray-600">{st.name}:</span>
-                        <span className={`font-bold ${qty > 0 ? 'text-[#0A8F5C]' : 'text-red-500'}`}>
+                        <span
+                          className={`font-bold ${qty > 0 ? 'text-[#0A8F5C]' : 'text-red-500'}`}
+                        >
                           {qty} un
                         </span>
                       </div>
@@ -368,13 +372,67 @@ export default function Products() {
 
             <form onSubmit={handleSaveProduct} className="space-y-3 py-2">
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Nome do Veículo / Produto *</Label>
-                <Input
-                  value={pName}
-                  onChange={(e) => setPName(e.target.value)}
-                  placeholder="Ex: Patinete Elétrico Segway Ninebot F40"
-                  required
-                />
+                <Label htmlFor="pName" className="text-xs font-semibold">
+                  Nome do Veículo / Produto *
+                </Label>
+                <div className="relative">
+                  {!editingId && (
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  )}
+                  <Input
+                    id="pName"
+                    value={pName}
+                    onChange={(e) => setPName(e.target.value)}
+                    placeholder={
+                      editingId
+                        ? 'Ex: Patinete Elétrico Segway Ninebot F40'
+                        : 'Digite para procurar no catálogo ou cadastrar um novo'
+                    }
+                    className={editingId ? undefined : 'pl-9'}
+                    autoComplete="off"
+                    required
+                  />
+                </div>
+                {sameName.length > 0 && (
+                  <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
+                    <p className="text-[11px] text-amber-900">
+                      Já está cadastrado? Clique em <strong>Dar entrada</strong> para lançar mais
+                      unidades com o custo desta compra, sem criar outro produto igual.
+                    </p>
+                    {sameName.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="break-words text-xs font-medium text-gray-900">{p.name}</p>
+                          <p className="text-[10px] text-gray-500">
+                            {p.sku} · {totalStock(p.id)} un em estoque
+                            {p.status === 'inativo' ? ' · inativo' : ''}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <Button
+                            asChild
+                            size="sm"
+                            className="h-7 bg-[#0A8F5C] px-2 text-xs text-white hover:bg-[#087A4D]"
+                          >
+                            <Link to={`/estoque?entrada=${p.id}`}>Dar entrada</Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => openEdit(p)}
+                          >
+                            Editar
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

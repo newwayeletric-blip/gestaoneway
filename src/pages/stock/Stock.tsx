@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import ProductPicker from '@/components/ProductPicker'
 import { StockService, ProductsService } from '@/services/api'
 import type { StockItemRecord, ProductRecord, TransferRecord } from '@/types'
 import { formatBRL, formatDateBR } from '@/lib/formatters'
@@ -79,6 +81,17 @@ export default function Stock() {
     setEntryCost(p?.cost_price ? String(p.cost_price) : '')
     setEntryPrice(p?.sale_price ? String(p.sale_price) : '')
   }
+
+  // Produtos → "Dar entrada" abre /estoque?entrada=<produto> com a entrada pronta.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const entryFromLink = searchParams.get('entrada')
+  useEffect(() => {
+    if (!entryFromLink || !isAdmin || !products.some((p) => p.id === entryFromLink)) return
+    setEntryType('entrada')
+    chooseEntryProduct(entryFromLink)
+    setIsEntryModalOpen(true)
+    setSearchParams({}, { replace: true })
+  }, [entryFromLink, isAdmin, products])
 
   const loadData = async () => {
     setIsLoading(true)
@@ -606,19 +619,15 @@ export default function Stock() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Produto a Transferir</Label>
-              <Select value={transferProduct} onValueChange={setTransferProduct}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o produto..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.sku})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="transferProduct" className="text-xs">
+                Produto a Transferir
+              </Label>
+              <ProductPicker
+                id="transferProduct"
+                products={products}
+                value={transferProduct}
+                onChange={setTransferProduct}
+              />
             </div>
 
             <div className="space-y-1">
@@ -699,19 +708,15 @@ export default function Stock() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Produto</Label>
-              <Select value={entryProduct} onValueChange={chooseEntryProduct}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o produto..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.sku})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="entryProduct" className="text-xs">
+                Produto
+              </Label>
+              <ProductPicker
+                id="entryProduct"
+                products={products}
+                value={entryProduct}
+                onChange={chooseEntryProduct}
+              />
             </div>
 
             <div className="space-y-1">
