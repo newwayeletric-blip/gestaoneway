@@ -707,18 +707,23 @@ export const StockService = {
 
   // Entrada, avaria, perda ou ajuste manual: o servidor grava a movimentação e
   // atualiza o saldo da loja na mesma transação. No ajuste, quantity é o saldo
-  // contado na loja.
+  // contado na loja. Na entrada, unit_cost é o custo desta compra (o custo do
+  // produto vira a média ponderada) e sale_price troca o preço de venda.
   async recordManualEntry(data: {
     type: 'entrada' | 'ajuste' | 'perda' | 'avaria'
     product: string
     store: string
     quantity: number
     reason: string
+    unit_cost?: number
+    sale_price?: number
   }) {
-    return await pb.send<{ movement: string; previous: number; quantity: number }>(
-      '/backend/v1/stock/manual',
-      { method: 'POST', body: data },
-    )
+    return await pb.send<{
+      movement: string
+      previous: number
+      quantity: number
+      cost: { unit: number; previous: number; average: number; sale_price: number } | null
+    }>('/backend/v1/stock/manual', { method: 'POST', body: data })
   },
 
   async cancelTransfer(transferId: string) {

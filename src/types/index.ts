@@ -247,6 +247,7 @@ export interface StockMovementRecord {
   user?: string
   reason?: string
   source_ref?: string
+  unit_cost?: number // Custo unitário da compra (entrada); só para admin
   created: string
   updated: string
   expand?: {

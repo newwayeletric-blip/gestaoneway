@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { StockService, ProductsService } from '@/services/api'
 import type { StockItemRecord, ProductRecord, TransferRecord } from '@/types'
-import { formatDateBR } from '@/lib/formatters'
+import { formatBRL, formatDateBR } from '@/lib/formatters'
 import useRealtime from '@/hooks/use-realtime'
 import {
   Layers,
@@ -65,8 +65,20 @@ export default function Stock() {
   const [entryProduct, setEntryProduct] = useState('')
   const [entryQty, setEntryQty] = useState('1')
   const [entryReason, setEntryReason] = useState('')
+  // Entrada: custo desta compra e preço de venda, preenchidos com os do produto.
+  const [entryCost, setEntryCost] = useState('')
+  const [entryPrice, setEntryPrice] = useState('')
 
   const { toast } = useToast()
+
+  const entryProductRecord = products.find((p) => p.id === entryProduct)
+
+  const chooseEntryProduct = (id: string) => {
+    setEntryProduct(id)
+    const p = products.find((x) => x.id === id)
+    setEntryCost(p?.cost_price ? String(p.cost_price) : '')
+    setEntryPrice(p?.sale_price ? String(p.sale_price) : '')
+  }
 
   const loadData = async () => {
     setIsLoading(true)
@@ -191,6 +203,16 @@ export default function Stock() {
       return
     }
 
+    const isEntry = entryType === 'entrada'
+    if (isEntry && (entryCost.trim() === '' || Number(entryCost) < 0)) {
+      toast({
+        title: 'Atenção',
+        description: 'Informe o custo unitário desta compra.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     try {
       const res = await StockService.recordManualEntry({
         type: entryType,
@@ -198,16 +220,24 @@ export default function Stock() {
         store: entryStore,
         quantity: Number(entryQty),
         reason: entryReason.trim(),
+        ...(isEntry ? { unit_cost: Number(entryCost) } : {}),
+        ...(isEntry && entryPrice.trim() !== '' ? { sale_price: Number(entryPrice) } : {}),
       })
 
+      const cost = res.cost
+      const costText = cost
+        ? ` Custo médio: ${formatBRL(cost.previous)} → ${formatBRL(cost.average)}. Preço de venda: ${formatBRL(cost.sale_price)}.`
+        : ''
       toast({
         title: 'Movimentação registrada com sucesso!',
-        description: `Saldo da loja: ${res.previous} → ${res.quantity} un.`,
+        description: `Saldo da loja: ${res.previous} → ${res.quantity} un.${costText}`,
       })
       setIsEntryModalOpen(false)
       setEntryProduct('')
       setEntryQty('1')
       setEntryReason('')
+      setEntryCost('')
+      setEntryPrice('')
       loadData()
     } catch (err: any) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' })
@@ -510,6 +540,11 @@ export default function Stock() {
                             ? '+'
                             : '-'}
                         {Math.abs(Number(m.quantity) || 0)} un
+                        {m.type === 'entrada' && Number(m.unit_cost) > 0 && (
+                          <span className="ml-1 font-sans font-normal text-gray-500">
+                            a {formatBRL(m.unit_cost)}/un
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-gray-500 truncate max-w-xs">
                         {m.reason || m.source_ref || '-'}
@@ -665,7 +700,7 @@ export default function Stock() {
 
             <div className="space-y-1">
               <Label className="text-xs">Produto</Label>
-              <Select value={entryProduct} onValueChange={setEntryProduct}>
+              <Select value={entryProduct} onValueChange={chooseEntryProduct}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o produto..." />
                 </SelectTrigger>
@@ -692,8 +727,55 @@ export default function Stock() {
               />
             </div>
 
+            {entryType === 'entrada' && (
+              <div className="grid grid-cols-2 items-end gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="entryCost" className="text-xs">
+                    Custo unitário desta compra (R$)
+                  </Label>
+                  <Input
+                    id="entryCost"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={entryCost}
+                    onChange={(e) => setEntryCost(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="entryPrice" className="text-xs">
+                    Preço de venda (R$)
+                  </Label>
+                  <Input
+                    id="entryPrice"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={entryPrice}
+                    onChange={(e) => setEntryPrice(e.target.value)}
+                  />
+                </div>
+                <p className="col-span-2 text-[11px] text-gray-500">
+                  {entryProductRecord
+                    ? `Custo atual do produto: ${
+                        entryProductRecord.cost_price
+                          ? formatBRL(entryProductRecord.cost_price)
+                          : 'não informado'
+                      }. `
+                    : ''}
+                  Cada compra guarda o próprio custo, e o custo do produto passa a ser a média com o
+                  que já está no estoque. O preço de venda novo vale para as próximas vendas.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1">
-              <Label className="text-xs">Motivo / Justificativa Obrigatória</Label>
+              <Label className="text-xs">
+                {entryType === 'entrada'
+                  ? 'Observação (fornecedor, nota de compra)'
+                  : 'Motivo / Justificativa Obrigatória'}
+              </Label>
               <Textarea
                 value={entryReason}
                 onChange={(e) => setEntryReason(e.target.value)}

@@ -14,11 +14,12 @@ onRecordEnrich(
       auth.getString('status') === 'ativo'
 
     if (!isSuperuser && !isAdmin) {
-      e.record.hide('cost_price', 'cost_price_snapshot')
+      e.record.hide('cost_price', 'cost_price_snapshot', 'unit_cost')
     }
     return e.next()
   },
   'products',
   'product_variants',
   'sale_items',
+  'stock_movements',
 )
